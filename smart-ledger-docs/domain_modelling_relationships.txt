@@ -1,0 +1,719 @@
+1. Customer ↔ Customer Order
+Relationship
+
+One Customer → Many Customer Orders
+
+A customer can place multiple orders.
+
+Customer
+   │
+   └── 1 : N ──> Customer Order
+
+Example:
+
+Customer A places Order #101, #105 and #120.
+
+But every order belongs to one customer.
+
+Cardinality
+
+Customer 1 : N Order
+
+2. Customer Order ↔ Payment
+
+This is important.
+
+Relationship
+
+One Order → Many Payments
+
+An order may be paid in multiple installments.
+
+Example:
+
+₹1,00,000 order
+
+Advance → ₹30,000
+Second payment → ₹40,000
+Final payment → ₹30,000
+
+So:
+
+Customer Order
+       │
+       └── 1 : N ──> Payment
+
+But there's another requirement:
+
+One Payment → Multiple Orders
+
+A customer may pay ₹1,50,000 and that payment could settle:
+
+Order A → ₹50,000
+Order B → ₹60,000
+Order C → ₹40,000
+
+Therefore, conceptually:
+
+Order ↔ Payment = N : M
+
+This is a case where the relationship itself needs to be represented.
+
+We can later model something like a Payment Allocation concept.
+
+Order ── N : M ── Payment
+             │
+             └── Allocation
+
+This is an important domain discovery.
+
+3. Supplier ↔ Purchase
+Relationship
+
+One Supplier → Many Purchases
+
+A supplier can supply raw silk many times.
+
+Supplier
+   │
+   └── 1 : N ──> Purchase
+
+Each purchase belongs to one supplier.
+
+4. Purchase ↔ Raw Material
+
+A purchase introduces raw silk into the business.
+
+Conceptually:
+
+Purchase
+    │
+    └──> Raw Material
+
+If we use the Raw Material Lot concept:
+
+One Purchase → One or Many Raw Material Lots
+
+For example:
+
+Purchase:
+
+100 kg silk
+
+Could become:
+
+Lot A → 60 kg
+Lot B → 40 kg
+
+Whether we actually need multiple lots will be finalized later.
+
+5. Raw Material ↔ Customer Order
+
+Raw silk can be allocated against customer demand.
+
+For example:
+
+Customer orders 50 kg raw silk.
+
+The business may reserve 50 kg from available inventory.
+
+So there is a conceptual relationship:
+
+Raw Material
+      │
+      └──> Allocation ──> Customer Order
+
+This is not necessarily a simple direct relationship because one material lot can be allocated across multiple orders.
+
+Therefore:
+
+Raw Material ↔ Order = potentially N : M
+
+with an allocation concept between them.
+
+6. Raw Material ↔ Production Batch
+
+Raw silk can be consumed by in-house production.
+
+Raw Material
+      │
+      └──> Production Batch
+
+Example:
+
+100 kg raw silk
+→ 80 kg used for production
+→ 20 kg remains available
+
+Again, one production batch may consume material from multiple sources.
+
+So conceptually:
+
+Raw Material ↔ Production Batch = N : M
+
+This is another place where a Material Allocation/Consumption relationship may be needed.
+
+7. Production Batch ↔ Finished Warp
+
+A production batch produces finished warp.
+
+Production Batch
+       │
+       └──> Finished Warp
+
+For example:
+
+80 kg raw silk
+→ production
+→ 75 kg Kora warp
+
+The production record should allow us to identify:
+
+input weight
+output weight
+wastage/difference
+8. Customer Order ↔ Production Batch
+
+A production batch can be created because of a customer order.
+
+Customer Order
+       │
+       └──> Production Batch
+
+However, one production batch may potentially satisfy multiple orders.
+
+Example:
+
+Produce 100 kg Kora warp
+
+which is later allocated to:
+
+Customer A → 40 kg
+Customer B → 30 kg
+Customer C → 30 kg
+
+Therefore, don't assume:
+
+One Order = One Production Batch
+
+The relationship can be:
+
+Order ↔ Production Batch = N : M
+
+with production/allocation logic between them.
+
+9. Worker ↔ Work Record
+Relationship
+
+One Worker → Many Work Records
+
+Worker
+   │
+   └── 1 : N ──> Work Record
+
+Example:
+
+A rolling worker may have work records for:
+
+Monday
+Tuesday
+Wednesday
+etc.
+10. Production Batch ↔ Work Record
+
+A work record can belong to a production activity.
+
+Production Batch
+       │
+       └── 1 : N ──> Work Record
+
+For example:
+
+Production Batch #50:
+
+Worker A → 5 hours
+Worker B → 6 hours
+Worker C → 4 hours
+11. Worker ↔ Worker Payment
+
+Worker payment is different from work performed.
+
+Worker
+   │
+   ├──> Work Records
+   │
+   └──> Payments
+
+A worker can have many payments.
+
+A payment may settle multiple work records.
+
+So:
+
+Work Record ↔ Worker Payment = potentially N : M
+
+However, we don't necessarily need to force a detailed allocation model in the MVP if payments are settled periodically.
+
+We'll decide the exact granularity later.
+
+12. Manufacturer ↔ Outsourcing Job
+Relationship
+
+One Manufacturer → Many Outsourcing Jobs
+
+Manufacturer
+     │
+     └── 1 : N ──> Outsourcing Job
+
+A manufacturer may receive many jobs from SmartSilk.
+
+13. Outsourcing Job ↔ Raw Material
+
+An outsourcing job consumes/sends raw silk.
+
+Outsourcing Job
+       │
+       └──> Raw Material
+
+Example:
+
+100 kg raw silk sent to Manufacturer A.
+
+The system needs to know which material was supplied and how much.
+
+Again, this is essentially a material allocation/consumption relationship.
+
+14. Outsourcing Job ↔ Customer Order
+
+An outsourced job can be associated with a customer order.
+
+Customer Order
+       │
+       └──> Outsourcing Job
+
+Example:
+
+Customer requests 200 kg Silk warp
+→ SmartSilk outsources production
+→ Manufacturer produces it.
+
+But one outsourcing job could potentially support multiple orders.
+
+So:
+
+Order ↔ Outsourcing Job = potentially N : M
+
+15. Outsourcing Job ↔ Payment
+
+The manufacturer eventually needs to be paid.
+
+Outsourcing Job
+       │
+       └──> Payment
+
+The payment could happen later, potentially combining several jobs.
+
+Therefore:
+
+Outsourcing Job ↔ Payment = potentially N : M
+
+This is similar to supplier payments.
+
+16. Customer ↔ Payment
+
+A customer can make many payments.
+
+Customer
+   │
+   └── 1 : N ──> Payment
+
+But a payment can settle multiple orders.
+
+Therefore:
+
+Customer
+   │
+   └── 1 : N ──> Payment
+                    │
+                    └── allocations ──> Orders
+17. Supplier ↔ Payment
+
+Same principle.
+
+A supplier can receive many payments.
+
+Supplier
+   │
+   └── 1 : N ──> Payment
+
+One payment may settle multiple purchases.
+
+Therefore:
+
+Purchase ↔ Payment = N : M
+
+through payment allocation.
+
+18. Financial Account ↔ Financial Transaction
+
+This is one of the most important relationships.
+
+One Financial Account → Many Financial Transactions
+Financial Account
+       │
+       └── 1 : N ──> Financial Transaction
+
+Examples:
+
+Cash
+
+Customer payment
+Worker payment
+Expense
+Supplier payment
+
+Bank Account
+
+Customer UPI
+Supplier transfer
+Loan received
+Bank withdrawal
+19. Financial Transaction ↔ Business Entity
+
+A financial transaction can originate from different business events.
+
+For example:
+
+Customer Payment
+      ↓
+Financial Transaction
+
+or:
+
+Expense
+   ↓
+Financial Transaction
+
+or:
+
+Loan Received
+      ↓
+Financial Transaction
+
+or:
+
+Chit Contribution
+       ↓
+Financial Transaction
+
+Therefore, a Financial Transaction should have a reference to its business reason/source, rather than assuming every transaction is a customer/supplier payment.
+
+20. Loan ↔ Financial Transaction
+
+A loan has multiple financial events.
+
+Example:
+
+Loan
+ │
+ ├── Loan received
+ ├── Interest payment
+ ├── Principal payment
+ └── Final repayment
+
+Therefore:
+
+One Loan → Many Financial Transactions
+
+21. Chit ↔ Financial Transaction
+
+Similarly:
+
+Chit
+ │
+ ├── Contribution
+ ├── Contribution
+ ├── Contribution
+ └── Payout
+
+So:
+
+One Chit → Many Financial Transactions
+
+But the Chit has its own business-level records such as contributions, bidding and payout.
+
+22. Expense ↔ Financial Transaction
+
+An expense represents the business reason.
+
+The financial transaction represents the actual money movement.
+
+Expense
+   │
+   └── 1 : 1 ──> Financial Transaction
+
+For example:
+
+Electricity expense ₹8,000
+
+creates:
+
+Cash/Bank outflow ₹8,000
+
+The exact relationship may later become one-to-many if partial payments are allowed, but for the MVP we can initially treat a normal expense as having one corresponding financial movement.
+
+23. Bill ↔ Customer Order
+
+A sales bill is generated from the underlying sale/order.
+
+Customer Order
+      │
+      └──> Bill
+
+But:
+
+Bill ≠ Payment
+
+A bill can exist before payment.
+
+24. Purchase ↔ Bill
+
+Supplier purchase bills are associated with purchases.
+
+Purchase
+   │
+   └──> Purchase Bill
+
+The document provides evidence of the purchase but doesn't itself mean the supplier has been paid.
+
+25. Entity ↔ Documents
+
+Various entities may have supporting documents.
+
+For example:
+
+Purchase → Supplier Bill
+Expense  → Receipt
+Loan     → Loan Document
+Sale     → Customer Bill
+
+Therefore, documents are generally attached to business records, rather than becoming the source of truth.
+
+26. Notification ↔ Business Entity
+
+A notification is generated because something happened or is approaching.
+
+Examples:
+
+Supplier Payable → Supplier Due Notification
+
+Customer Outstanding → Customer Reminder
+
+Loan Due → Loan Notification
+
+Low Stock → Inventory Notification
+
+So:
+
+Notification → references the relevant business entity
+
+27. The Most Important Relationship: Material Flow
+
+For SmartSilk, there is one relationship chain that is more important than almost anything else.
+
+Purchase
+   ↓
+Raw Silk
+   ↓
+ ┌───────────────┬──────────────────┐
+ ↓               ↓                  ↓
+Direct Sale   In-house           Outsourcing
+                 ↓                  ↓
+              Kora Warp        Finished Warp
+                 ↓                  ↓
+                 └────────┬─────────┘
+                          ↓
+                    Customer Order
+                          ↓
+                    Customer Delivery
+
+This is the physical/material flow of the business.
+
+SmartSilk should eventually be able to answer:
+
+"Where did this silk go?"
+
+For example:
+
+Purchased 500 kg
+
+System should be able to conceptually trace:
+
+100 kg → direct sale
+150 kg → in-house production
+100 kg → outsourcing
+100 kg → still available
+50 kg → returned/wastage/discrepancy
+
+This is why material allocation/consumption relationships are important.
+
+28. The Financial Flow
+
+There is a parallel financial flow:
+
+Customer
+   ↓
+Customer Payment
+   ↓
+Cash / Bank
+
+Business
+   ↓
+Supplier Payment
+   ↓
+Supplier
+
+Business
+   ↓
+Worker Payment
+   ↓
+Worker
+
+Business
+   ↓
+Manufacturer Payment
+   ↓
+Manufacturer
+
+And:
+
+Loan
+  ↓
+Money In
+
+Expense
+  ↓
+Money Out
+
+Chit
+  ↓
+Contribution / Payout
+
+All of these ultimately interact with:
+
+Financial Accounts → Financial Transactions
+
+29. Three Major Graphs of SmartSilk
+
+This is an important architectural insight.
+
+SmartSilk isn't just one relationship graph.
+
+It has three major interconnected flows:
+
+A. Material Flow
+Supplier
+   ↓
+Purchase
+   ↓
+Raw Silk
+   ↓
+Production / Outsourcing / Sale
+   ↓
+Finished Warp
+   ↓
+Customer
+B. Business Flow
+Customer
+   ↓
+Order
+   ↓
+Production / Allocation
+   ↓
+Delivery
+   ↓
+Bill
+C. Financial Flow
+Business Event
+      ↓
+Payment / Financial Transaction
+      ↓
+Cash / Bank
+
+And these three flows connect.
+
+That's essentially what makes SmartSilk more than a simple bookkeeping application.
+
+30. Preliminary Relationship Summary
+Entity	Relationship	Entity
+Customer	1:N	Order
+Supplier	1:N	Purchase
+Order	N:M	Payment
+Purchase	N:M	Payment
+Worker	1:N	Work Record
+Production Batch	1:N	Work Record
+Manufacturer	1:N	Outsourcing Job
+Order	N:M	Production Batch
+Order	N:M	Outsourcing Job
+Raw Material	N:M	Production
+Raw Material	N:M	Outsourcing
+Financial Account	1:N	Financial Transaction
+Loan	1:N	Financial Transaction
+Chit	1:N	Financial Transaction
+Expense	1:1*	Financial Transaction
+Order	1:N / 1:0..N	Bill
+Purchase	1:N / 1:0..N	Bill
+Business Entity	1:N	Documents
+Business Entity	1:N	Notifications
+
+* Subject to refinement during detailed financial modeling.
+
+One Important Thing We Discovered
+
+While defining relationships, we've discovered that some relationships are too important to remain just relationships.
+
+For example:
+
+Order ↔ Payment
+
+We need to know:
+
+How much of this particular payment was allocated to this particular order?
+
+So we may need:
+
+Payment Allocation
+
+Similarly:
+
+Raw Material ↔ Production
+
+We need to know:
+
+How many kg from this material source were consumed by this production operation?
+
+So we may need:
+
+Material Allocation / Consumption
+
+These aren't necessarily final entities yet. We'll identify such cases formally in the next stages.
+
+4.4 Output
+
+Our preliminary domain relationship model now establishes four major areas:
+
+People
+
+Customer, Supplier, Worker, Manufacturer
+
+Operations
+
+Purchase, Order, Production, Outsourcing, Work
+
+Material
+
+Raw Silk → Production/Outsourcing → Finished Warp
+
+Money
+
+Payment → Financial Transaction → Cash/Bank

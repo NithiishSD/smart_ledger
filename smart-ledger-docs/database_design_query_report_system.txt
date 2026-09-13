@@ -1,0 +1,906 @@
+Step 7.4 — Database Query & Reporting Design
+
+Now we move from:
+
+“How do we store the data?”
+
+to:
+
+“How do we retrieve meaningful business information from that data?”
+
+This is especially important for SmartSilk because the whole purpose of the system is visibility.
+
+Your father doesn't just need screens saying:
+
+Purchase created successfully.
+
+He needs answers like:
+
+How much silk do I actually have?
+How much is outside with manufacturers?
+Who owes me money?
+Who do I owe?
+How much money is available right now?
+What orders are still pending?
+
+7.4.1 The Most Important Principle
+
+Don't create database columns for every dashboard number.
+
+For example, don't make:
+
+customer.outstanding_amount
+supplier.outstanding_amount
+warehouse.current_stock
+bank.balance
+monthly_profit
+
+and manually update them everywhere.
+
+Instead:
+
+                    SOURCE TRANSACTIONS
+                           │
+          ┌────────────────┼─────────────────┐
+          ▼                ▼                 ▼
+      Inventory          Finance          Orders
+          │                │                 │
+          ▼                ▼                 ▼
+      Movements       Transactions       Allocations
+          │                │                 │
+          └────────────────┼─────────────────┘
+                           ▼
+                       REPORTING
+                           │
+                           ▼
+                       Dashboard
+
+The dashboard is a view of the underlying truth.
+
+7.4.2 First Business Question — Current Raw Silk Stock
+
+Suppose the movement ledger contains:
+
+Movement	Quantity
+Purchase receipt	+500 kg
+Production consumption	-100 kg
+Direct sale	-50 kg
+Return	+20 kg
+Outsourcing	-150 kg
+
+Current warehouse raw silk:
+
+500 - 100 - 50 + 20 - 150
+= 220 kg
+
+The database doesn't need:
+
+current_raw_silk = 220
+
+The system derives it from movements.
+
+7.4.3 But Stock Needs a Dimension
+
+Simply calculating:
+
+SUM(quantity)
+
+isn't enough.
+
+We need to consider:
+
+product_type
+location
+
+For example:
+
+RAW_SILK
+WAREHOUSE
+
+is different from:
+
+RAW_SILK
+EXTERNAL_WIP
+
+and:
+
+SILK_WARP
+FINISHED_STOCK
+
+So conceptually:
+
+Stock(product_type, location)
+
+Example:
+
+Product	Location	Stock
+Raw Silk	Warehouse	220 kg
+Raw Silk	External WIP	150 kg
+Silk Warp	Finished	80 kg
+Kora Warp	Finished	45 kg
+
+This gives a much more useful picture.
+
+7.4.4 Inventory Dashboard
+
+The first dashboard section could show:
+
+┌─────────────────────────────────────┐
+│ INVENTORY                            │
+├─────────────────────────────────────┤
+│ Raw Silk              220 kg        │
+│ Silk Warp              80 kg        │
+│ Kora Warp              45 kg        │
+│ Vuda Warp              30 kg        │
+│ External WIP           150 kg        │
+└─────────────────────────────────────┘
+
+But there's another important question:
+
+Who has the 150 kg external WIP?
+
+So we need a second query grouped by manufacturer.
+
+7.4.5 External WIP by Manufacturer
+
+Example:
+
+Manufacturer	Issued	Received	Current WIP
+Manufacturer A	300 kg	250 kg	50 kg
+Manufacturer B	200 kg	120 kg	80 kg
+Manufacturer C	100 kg	80 kg	20 kg
+
+Total:
+
+150 kg
+
+This is directly useful to your father's real workflow.
+
+He can ask:
+
+"How much silk is currently outside?"
+
+and then:
+
+"With whom?"
+
+7.4.6 Inventory Movement History
+
+Another useful query:
+
+Show all movements for a particular material.
+
+Example:
+
+RAW SILK
+----------------------------
+
+Sep 01   Receipt       +300 kg
+Sep 03   Production    -100 kg
+Sep 04   Outsourcing   -80 kg
+Sep 05   Return         +10 kg
+
+This is valuable when someone asks:
+
+"Why does the system say I have only 130 kg?"
+
+You can trace the answer.
+
+This is why movement-based inventory is superior to simply storing a balance.
+
+7.4.7 Customer Outstanding
+
+Now finance.
+
+Suppose:
+
+Order A = ₹50,000
+Order B = ₹30,000
+Order C = ₹20,000
+
+Total obligation:
+
+₹1,00,000
+
+Customer pays:
+
+₹60,000
+
+Outstanding:
+
+₹40,000
+
+But don't calculate:
+
+customer.outstanding
+
+as a manually maintained field.
+
+Instead:
+
+Order obligations
+        -
+Payment allocations
+        =
+Outstanding
+7.4.8 Why Payment Allocation Is So Important
+
+Imagine:
+
+Customer owes:
+
+Order A = ₹30,000
+Order B = ₹40,000
+Order C = ₹50,000
+
+Payment:
+
+₹60,000
+
+Allocation:
+
+Order A → ₹30,000
+Order B → ₹30,000
+
+Outstanding:
+
+Order B → ₹10,000
+Order C → ₹50,000
+
+Total:
+
+₹60,000
+
+Without allocations, you know the customer paid ₹60,000 but don't know which obligations were settled.
+
+7.4.9 Customer Outstanding Dashboard
+
+Example:
+
+Customer	Outstanding	Oldest Due
+Customer A	₹85,000	18 days
+Customer B	₹42,000	7 days
+Customer C	₹1,20,000	31 days
+
+Now the owner can prioritize collection.
+
+This is more useful than merely showing:
+
+Total receivables = ₹2,47,000
+7.4.10 Supplier Payables
+
+Same principle in reverse.
+
+Suppose:
+
+Purchase 1 = ₹1,00,000
+Purchase 2 = ₹80,000
+Purchase 3 = ₹60,000
+
+Payments:
+
+₹1,20,000
+
+Outstanding:
+
+₹1,20,000
+
+But because the business pays oldest-first, the allocation might be:
+
+Purchase 1 → ₹1,00,000
+Purchase 2 → ₹20,000
+
+Remaining:
+
+Purchase 2 → ₹60,000
+Purchase 3 → ₹60,000
+
+This allows SmartSilk to answer:
+
+Which supplier bills are actually overdue?
+
+7.4.11 Supplier Due Report
+
+Example:
+
+Supplier	Outstanding	Due Date	Status
+Supplier A	₹75,000	Sep 08	OVERDUE
+Supplier B	₹40,000	Sep 15	UPCOMING
+Supplier C	₹1,20,000	Sep 20	UPCOMING
+
+This directly feeds your reminder system.
+
+7.4.12 Cash Position
+
+Cash isn't the same thing as profit.
+
+Suppose:
+
+Cash = ₹1,00,000
+Bank = ₹2,00,000
+
+Available money:
+
+₹3,00,000
+
+But the business may also have:
+
+Supplier payable = ₹2,50,000
+Customer receivable = ₹4,00,000
+
+So:
+
+Current money = ₹3,00,000
+
+doesn't mean:
+
+Profit = ₹3,00,000
+
+This distinction is central to SmartSilk.
+
+7.4.13 Financial Account Balance
+
+For each financial account:
+
+Balance
+=
+Money In
+-
+Money Out
+
+Example:
+
+SBI
++₹5,00,000
+-₹2,00,000
+-₹50,000
++₹1,00,000 transfer
+
+Balance:
+
+₹3,50,000
+
+But the ₹1,00,000 transfer from another SmartSilk account shouldn't be counted as business revenue.
+
+That's why account_transfers matter.
+
+7.4.14 Financial Position Dashboard
+
+A useful dashboard might show:
+
+┌──────────────────────────────────────┐
+│ MONEY POSITION                       │
+├──────────────────────────────────────┤
+│ Cash                 ₹1,00,000       │
+│ SBI                  ₹2,50,000       │
+│ HDFC                 ₹75,000         │
+│ UPI                  ₹25,000         │
+├──────────────────────────────────────┤
+│ Total Available      ₹4,50,000       │
+└──────────────────────────────────────┘
+
+Then separately:
+
+Receivables             ₹4,20,000
+Payables                ₹2,80,000
+
+This gives a much more realistic business picture.
+
+7.4.15 Pending Orders
+
+Orders should be queried by status.
+
+Example:
+
+status IN (
+    CONFIRMED,
+    IN_PROGRESS
+)
+
+Dashboard:
+
+Order	Customer	Weight	Due	Status
+ORD-101	A	100 kg	Sep 12	IN_PROGRESS
+ORD-102	B	80 kg	Sep 13	CONFIRMED
+ORD-103	C	150 kg	Sep 15	CONFIRMED
+
+This can then be compared with inventory.
+
+7.4.16 A More Valuable Query
+
+Instead of simply:
+
+"How many orders are pending?"
+
+SmartSilk can eventually answer:
+
+"Do we have enough silk to fulfill pending orders?"
+
+Example:
+
+Available raw silk = 200 kg
+
+Pending order requirements:
+Order A = 80 kg
+Order B = 70 kg
+Order C = 100 kg
+
+Total = 250 kg
+
+Therefore:
+
+Shortfall = 50 kg
+
+This is directly aligned with how your father actually thinks about the business.
+
+7.4.17 Purchase Decision Support
+
+Now SmartSilk becomes more than bookkeeping.
+
+It can show:
+
+Current raw silk              200 kg
+Pending production requirement 250 kg
+Shortfall                      50 kg
+
+And if the purchase threshold is:
+
+50 kg
+
+the system can flag:
+
+Purchase planning required.
+
+This is a derived business insight, not a manually entered value.
+
+7.4.18 Production Performance
+
+Production batch:
+
+Input = 100 kg
+Output = 92 kg
+Wastage = 8 kg
+
+Yield:
+
+92 / 100 × 100
+= 92%
+
+The database stores:
+
+input
+output
+wastage
+
+The report derives:
+
+yield_percentage
+
+This allows:
+
+Batch A → 92%
+Batch B → 95%
+Batch C → 89%
+
+Later you can analyze:
+
+Which production type has higher wastage?
+
+7.4.19 Outsourcing Performance
+
+For an outsourcing job:
+
+Issued = 200 kg
+Received = 185 kg
+Difference = 15 kg
+
+We can derive:
+
+recovery = 92.5%
+
+Now compare manufacturers:
+
+Manufacturer	Issued	Received	Recovery
+A	500 kg	470 kg	94%
+B	400 kg	350 kg	87.5%
+C	300 kg	285 kg	95%
+
+This eventually becomes useful for:
+
+Outsource vs own production decisions.
+
+7.4.20 Worker Cost Report
+
+Suppose:
+
+Worker A
+100 kg × ₹30 = ₹3,000
+
+Worker B
+80 kg × ₹35 = ₹2,800
+
+Monthly worker cost:
+
+₹5,800
+
+You can group by:
+
+worker
+work_type
+month
+production_batch
+
+This supports your future production costing.
+
+7.4.21 Monthly Expense Report
+
+Example:
+
+Category	September
+Transport	₹12,000
+Electricity	₹8,000
+Workers	₹45,000
+Maintenance	₹6,000
+Other	₹4,500
+Total	₹75,500
+
+This comes from expenses, not from arbitrary account withdrawals.
+
+7.4.22 Personal Drawings Must Be Separate
+
+Suppose your father takes:
+
+₹20,000
+
+for personal use.
+
+Money has left the business account.
+
+But it should not automatically become:
+
+Business expense = ₹20,000
+
+Instead:
+
+Financial Transaction
+direction = OUT
+classification = PERSONAL_DRAWING
+
+Then:
+
+Cash position ↓ ₹20,000
+
+but:
+
+Operating expense
+
+doesn't increase by ₹20,000.
+
+This is essential for meaningful future profitability analysis.
+
+7.4.23 P&L Is Different
+
+A basic conceptual model:
+
+Revenue
+ -
+Cost of Goods / Production
+ -
+Operating Expenses
+ =
+Profit
+
+But we should not build a sophisticated accounting engine for MVP.
+
+Instead, SmartSilk can initially produce:
+
+Basic business performance
+Sales / recognized revenue
+- material/production costs
+- worker costs
+- operating expenses
+= estimated operating result
+
+with clear documentation that it is a management report, not a formal statutory accounting system.
+
+This distinction is important because your father's current business process isn't maintained as formal double-entry accounting.
+
+7.4.24 Current Position vs Profitability
+
+This should become one of SmartSilk's major design concepts.
+
+Current position
+
+Answers:
+
+What do I have and what do I owe right now?
+
+Cash
+Bank
+Inventory
+Receivables
+Payables
+External WIP
+Pending commitments
+Profitability
+
+Answers:
+
+Did the business actually make money?
+
+Revenue
+Costs
+Expenses
+Profit
+
+These are related but not interchangeable.
+
+7.4.25 Dashboard Architecture
+
+Don't make the frontend calculate everything.
+
+Instead:
+
+Kotlin UI
+   │
+   ▼
+Dashboard API
+   │
+   ├── Inventory service
+   ├── Receivables query
+   ├── Payables query
+   ├── Finance query
+   ├── Orders query
+   └── Production query
+          │
+          ▼
+       PostgreSQL
+
+The backend owns the business calculations.
+
+The frontend displays them.
+
+7.4.26 Reporting Queries vs Transaction Queries
+
+This is another useful distinction.
+
+Transaction query
+
+Used during business operation:
+
+"Create payment."
+
+Needs:
+
+validation
+transaction
+locking
+consistency
+Reporting query
+
+Used for analysis:
+
+"Show all overdue suppliers."
+
+Needs:
+
+efficient joins
+indexes
+aggregation
+potentially read-only transaction
+
+Don't mix these responsibilities.
+
+7.4.27 Should We Create Database Views?
+
+Yes, potentially.
+
+For example:
+
+customer_outstanding_view
+supplier_outstanding_view
+inventory_summary_view
+financial_account_balance_view
+
+A database view is essentially a reusable query.
+
+Conceptually:
+
+material_movements
+        ↓
+inventory_summary_view
+        ↓
+Dashboard
+
+This can make reporting cleaner.
+
+But don't create a view for every screen.
+
+Use views when a calculation is:
+
+reused
+complex
+logically stable
+7.4.28 Materialized Views
+
+A normal view calculates when queried.
+
+A materialized view stores the result.
+
+Example:
+
+inventory_daily_summary
+
+could potentially be materialized later.
+
+But for MVP:
+
+Don't use materialized views unless actual performance requires them.
+
+PostgreSQL + proper indexes should be enough initially.
+
+7.4.29 Reporting API Design
+
+Instead of exposing raw SQL results everywhere, the backend can provide business-oriented endpoints.
+
+For example:
+
+GET /api/dashboard/summary
+
+GET /api/inventory/summary
+GET /api/inventory/external-wip
+
+GET /api/customers/outstanding
+GET /api/suppliers/payables
+
+GET /api/finance/accounts
+GET /api/finance/cash-position
+
+GET /api/orders/pending
+
+GET /api/reports/monthly-expenses
+GET /api/reports/production
+
+The exact REST structure will be finalized in Step 8 — API & Backend Design.
+
+7.4.30 One Query Can Support Multiple Screens
+
+For example:
+
+customer_outstanding
+
+could power:
+
+Dashboard
+Customer list
+Customer detail
+Payment screen
+Reports
+Notifications
+
+This is why reporting should be designed centrally rather than calculating the same thing separately in every UI screen.
+
+7.4.31 The Query Design Rule
+
+For every important business metric, ask:
+
+1. What is the source of truth?
+
+Example:
+
+Inventory → material_movements
+Money → financial_transactions
+Payments → payments
+Order obligations → order_items
+2. What calculation produces the metric?
+
+Example:
+
+Outstanding =
+obligation - allocations
+3. Can it become inconsistent?
+
+If yes, don't store it as an independently editable field.
+
+4. What index does the query need?
+
+Optimize after identifying the actual query pattern.
+
+7.4.32 SmartSilk Reporting Matrix
+Business Question	Source	Derived Result
+Raw silk available?	Material movements	Current stock
+Silk outside?	Material movements	External WIP
+With whom?	Outsourcing + movements	Manufacturer WIP
+Customer owes?	Orders + allocations	Receivable
+Supplier owed?	Purchases + allocations	Payable
+Cash available?	Financial transactions	Account balance
+Pending orders?	Orders/order items	Pending workload
+Production yield?	Production batches	Output/input
+Outsourcing efficiency?	Outsourcing jobs	Recovery
+Worker cost?	Work records	Labour cost
+Expenses?	Expenses	Monthly totals
+Profitability?	Revenue + costs + expenses	Management P&L
+7.4.33 This Leads to a Powerful SmartSilk Dashboard
+
+Eventually your home screen should answer:
+
+┌──────────────────────────────────────────┐
+│              SMARTSILK                   │
+├──────────────────────────────────────────┤
+│ MONEY                                    │
+│ Cash + Bank             ₹4,50,000        │
+│ Receivables             ₹4,20,000        │
+│ Payables                ₹2,80,000        │
+│                                          │
+│ INVENTORY                                │
+│ Raw Silk                  220 kg         │
+│ Finished Warp             155 kg         │
+│ External WIP              150 kg         │
+│                                          │
+│ ORDERS                                   │
+│ Pending Orders                8          │
+│ Due Soon                      3          │
+│                                          │
+│ ALERTS                                   │
+│ Supplier Payments Due         4          │
+│ Low Raw Silk Stock             1         │
+│ External WIP Pending           2         │
+└──────────────────────────────────────────┘
+
+And importantly:
+
+Every number should be traceable back to source transactions.
+
+If the owner taps ₹4,20,000 receivables, SmartSilk should be able to show:
+
+Customer A → ₹1,20,000
+Customer B → ₹80,000
+Customer C → ₹2,20,000
+
+and then drill down to individual orders/payments.
+
+That is what makes the system trustworthy.
+
+7.4.34 Why This Matters for Your AI Module
+
+Later, when we build the AI financial advisory, the AI shouldn't directly query random tables and invent conclusions.
+
+Instead:
+
+PostgreSQL
+     ↓
+Validated reporting/query layer
+     ↓
+Structured business metrics
+     ↓
+AI reasoning
+     ↓
+Explanation / recommendation
+
+For example:
+
+Raw silk = 220 kg
+Pending requirement = 250 kg
+Supplier payable = ₹2.8L
+Cash available = ₹4.5L
+External WIP = 150 kg
+
+AI can then say:
+
+"Your immediate raw-silk requirement exceeds available stock by approximately 30 kg, while ₹2.8 lakh is currently payable to suppliers."
+
+The AI is reasoning over validated facts, not becoming the source of financial truth.
+
+Step 7.4 Complete
+
+At this point we've completed the major database-design phase:
+
+7.0 Conceptual Database Design
+        ↓
+7.1 Detailed ER Design
+        ↓
+7.2 Normalization & Integrity
+        ↓
+7.3 Exact Schema Design
+        ↓
+7.4 Query & Reporting Design

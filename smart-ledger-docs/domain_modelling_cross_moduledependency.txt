@@ -1,0 +1,696 @@
+Step 4.9 — Define Cross-Module Dependencies
+
+Now we identify how the different SmartSilk modules depend on one another.
+
+This is important because SmartSilk is not a collection of independent CRUD modules. A single business action can affect multiple modules.
+
+For example:
+
+Receiving raw silk affects purchasing, inventory, supplier obligations, and dashboard visibility.
+
+If we don't understand these dependencies now, the backend may become tightly coupled and difficult to maintain.
+
+4.9.1 What is a Cross-Module Dependency?
+
+A cross-module dependency exists when one module needs information or actions from another module.
+
+Example:
+
+Customer Order
+      ↓
+Needs raw silk availability
+      ↓
+Inventory Module
+
+The order module depends on inventory information, but it should not directly manipulate inventory database tables.
+
+Instead:
+
+It should request inventory allocation through a defined service/interface.
+
+4.9.2 SmartSilk Module Map
+
+Our current modules are:
+
+1. Supplier & Purchase Management
+2. Inventory & Material Flow
+3. Customer & Sales Order Management
+4. In-house Production & Workers
+5. Outsourced Warp / Job Work
+6. Customer Payments & Receivables
+7. Financial Ledger, Bank & Cash
+8. Expenses & Personal Drawings
+9. Chit Management
+10. Loan Management
+11. Bills, Documents & Audit Records
+12. Notifications & Alerts
+13. Dashboard & Business Intelligence
+
+We need to understand their dependency direction.
+
+4.9.3 High-Level Dependency Flow
+Supplier & Purchase
+        ↓
+Inventory & Material Flow
+        ↓
+Production / Outsourcing
+        ↓
+Customer Orders
+        ↓
+Customer Payments
+        ↓
+Financial Ledger
+        ↓
+Dashboard & Analytics
+
+But this is only a simplified view.
+
+The actual system is more interconnected:
+
+                         Dashboard
+                       /     |      \
+                      /      |       \
+             Inventory     Finance    Orders
+                ↑            ↑          ↑
+                |            |          |
+       Purchase ─┼──── Production ──────┘
+                |
+          Outsourcing
+
+Orders ─────→ Customer Payments
+Purchase ───→ Supplier Payments
+Production ─→ Worker Payments
+Loans ───────→ Finance
+Chits ───────→ Finance
+Expenses ────→ Finance
+4.9.4 Supplier & Purchase → Inventory
+Dependency
+
+The Purchase module creates the expectation that material will enter the business.
+
+The Inventory module records the material only when it is physically received.
+
+Purchase Ordered
+      ↓
+Material Receipt
+      ↓
+Inventory Increased
+Important distinction
+
+Purchase should not directly update an arbitrary inventory balance.
+
+Instead:
+
+Purchase Module
+      ↓
+Material Received event/action
+      ↓
+Inventory Module records movement
+Why?
+
+Because:
+
+Ordered material is not available stock
+Partially received material must be supported
+Returned material must be tracked
+Inventory must reflect physical reality
+4.9.5 Inventory → Customer Orders
+
+Customer orders need to know whether sufficient material/product is available.
+
+Example:
+
+Customer orders 100 kg Silk Warp
+             ↓
+Order Module
+             ↓
+Checks finished inventory
+             ↓
+If unavailable:
+Production or outsourcing required
+
+The Order module may request:
+
+Available finished stock
+Allocatable stock
+Material availability
+Existing commitments
+
+But it should not directly modify inventory.
+
+Dependency type
+
+Order depends on Inventory availability.
+
+4.9.6 Customer Orders → Production
+
+If an order cannot be fulfilled from finished inventory:
+
+Customer Order
+      ↓
+Production Requirement
+      ↓
+Production Module
+
+The production module needs:
+
+Product type
+Required weight
+Warp specification, if applicable
+Expected completion
+Order reference
+Important
+
+An order should not own the entire production process.
+
+Instead:
+
+The order creates a requirement, while Production manages how the product is manufactured.
+
+This allows production to also happen:
+
+Ahead of demand
+For general stock
+For multiple orders
+4.9.7 Customer Orders → Outsourcing
+
+If internal production is unavailable:
+
+Customer Order
+      ↓
+Outsourcing Requirement
+      ↓
+Outsourcing Module
+
+But outsourcing may also happen without a specific customer order.
+
+Example:
+
+The owner sends material to a manufacturer ahead of peak demand.
+
+Therefore:
+
+Customer Order ──optional──→ Outsourcing Job
+
+The relationship should not be mandatory.
+
+4.9.8 Inventory → Production
+
+Production depends heavily on inventory.
+
+Before production starts, the system should validate:
+
+Is enough raw silk available?
+Is the material already allocated?
+Is the material suitable for this product?
+Is it already being used elsewhere?
+
+Example:
+
+Available raw silk = 70 kg
+Production requires = 100 kg
+
+The system should not allow the operation unless:
+
+Additional material becomes available, or
+Owner explicitly records an authorized exception.
+Dependency
+Production → Inventory allocation/consumption
+4.9.9 Inventory → Outsourcing
+
+When raw silk is sent to an external manufacturer:
+
+Inventory
+   ↓
+Issue material
+   ↓
+External WIP
+
+The Outsourcing module should request an inventory movement such as:
+
+ISSUE_TO_OUTSOURCING
+
+It should not simply subtract weight directly from a stock field.
+
+When material returns:
+
+External WIP
+   ↓
+Finished Warp Inventory
+4.9.10 Production → Worker Management
+
+Production generates work requirements.
+
+Example:
+
+Production Batch
+      ↓
+Rolling Work
+      ↓
+Worker Work Record
+
+or:
+
+Warping Production
+      ↓
+Weight processed
+      ↓
+Worker earnings
+
+But worker payment is separate.
+
+Work Record
+      ↓
+Worker Payable
+      ↓
+Worker Payment
+      ↓
+Finance
+Dependency chain
+Production
+   ↓
+Work Records
+   ↓
+Worker Payments
+   ↓
+Financial Ledger
+4.9.11 Customer Orders → Customer Payments
+
+An order creates a customer receivable when payment is not fully received.
+
+Customer Order
+      ↓
+Receivable
+      ↓
+Customer Payment
+      ↓
+Payment Allocation
+
+The payment module needs:
+
+Customer
+Outstanding orders
+Payment amount
+Payment method
+Allocation strategy
+
+But the order module should not independently modify bank balances.
+
+4.9.12 Customer Payments → Financial Ledger
+
+This is a critical dependency.
+
+Customer Payment
+      ↓
+Financial Transaction
+      ↓
+Cash / Bank Account
+
+Example:
+
+Customer pays ₹25,000 via UPI
+
+Effects:
+
+Customer outstanding decreases
+Bank account increases
+Financial transaction recorded
+Payment method stored
+
+This must be coordinated transactionally.
+
+4.9.13 Supplier Purchase → Supplier Payables
+
+A credit purchase creates a supplier obligation.
+
+Purchase
+      ↓
+Supplier Payable
+      ↓
+Supplier Payment
+
+If the purchase is cash-paid:
+
+Purchase
+      ↓
+Cash/Bank decreases immediately
+
+If credit-paid:
+
+Purchase
+      ↓
+Payable created
+      ↓
+Later Supplier Payment
+
+This means Purchase depends on financial classification, but should not directly implement the entire finance system.
+
+4.9.14 Supplier Payments → Finance
+Supplier Payment
+      ↓
+Financial Transaction
+      ↓
+Cash/Bank decreases
+
+The supplier payment module determines:
+
+Which supplier obligation is being settled
+Which purchases are allocated
+How much remains outstanding
+
+The finance module records the actual money movement.
+
+4.9.15 Expenses → Finance
+
+Expense recording and money movement are related but distinct.
+
+Example:
+
+Expense Created
+      ↓
+Expense Classification
+      ↓
+Financial Transaction
+      ↓
+Cash/Bank Decrease
+
+This allows future reporting to distinguish:
+
+Operating expense
+Outsourcing expense
+Personal drawing
+Loan interest
+Other costs
+4.9.16 Loans → Finance
+
+Loan management owns the loan obligation.
+
+Finance owns the actual money movement.
+
+Loan Received
+      ↓
+Loan Principal Increases
+      ↓
+Bank/Cash Increases
+
+For repayment:
+
+Loan Repayment
+      ↓
+Principal / Interest Allocation
+      ↓
+Cash/Bank Decrease
+Important separation
+Loan Module:
+"How much do we owe?"
+
+Finance Module:
+"Where did the money move?"
+4.9.17 Chits → Finance
+
+Chit management owns:
+
+Chit identity
+Contributions
+Bidding
+Payout
+Remaining contributions
+
+Finance records the physical cash movement.
+
+Chit Contribution
+      ↓
+Chit Ledger
+      ↓
+Physical Cash Decrease
+Chit Payout
+      ↓
+Chit Ledger
+      ↓
+Physical Cash Increase
+
+Because you specified that chit transactions are cash-only, the Chit module must validate that rule.
+
+4.9.18 Bills/Documents → Other Modules
+
+Bills are supporting records attached to business transactions.
+
+Possible dependencies:
+
+Customer Order → Sales Bill
+Purchase → Supplier Bill
+Expense → Expense Document
+Bank Transaction → Bank Statement
+Refund → Adjustment Document
+
+The Bills/Documents module should not become the source of financial truth.
+
+For example:
+
+A bill says ₹50,000, but that does not automatically mean ₹50,000 was paid.
+
+Therefore:
+
+Bill ≠ Payment
+Bill ≠ Financial Transaction
+4.9.19 Notifications → All Relevant Modules
+
+Notifications depend on business conditions from other modules.
+
+Examples:
+
+Supplier Payable
+      ↓
+Due Date Approaching
+      ↓
+Notification
+Customer Outstanding
+      ↓
+Overdue
+      ↓
+Notification
+Inventory Balance
+      ↓
+Below Threshold
+      ↓
+Notification
+Loan Due Date
+      ↓
+Notification
+
+Notifications should read or react to states, not directly change financial or inventory data.
+
+4.9.20 Dashboard → Read From Everything
+
+The Dashboard module is a consumer of data, not an owner of core transactions.
+
+It reads:
+
+Inventory
+Orders
+Purchases
+Receivables
+Payables
+Financial Transactions
+Expenses
+Loans
+Chits
+Production
+Outsourcing
+
+Then calculates:
+
+Available money
+Customer outstanding
+Supplier payable
+Current stock
+WIP
+Finished warp
+Upcoming commitments
+Revenue
+Expenses
+Profit/loss
+Production efficiency
+Important principle
+Dashboard does not manually maintain balances.
+
+It derives them from source modules.
+
+4.9.21 Dependency Classification
+
+Not all dependencies are equally strong.
+
+Strong dependency
+
+One module cannot perform its operation without another.
+
+Example:
+
+Production → Inventory
+
+Production cannot consume material that inventory does not recognize.
+
+Optional dependency
+
+A module may operate with or without another module.
+
+Example:
+
+Customer Order → Outsourcing
+
+An order may be fulfilled internally or from existing stock.
+
+Reporting dependency
+
+A module only reads data for analysis.
+
+Example:
+
+Dashboard → All Modules
+Notification dependency
+
+A module provides conditions to the notification engine.
+
+Example:
+
+Loan → Notifications
+4.9.22 Recommended Dependency Direction
+
+For a modular monolith, a clean direction could be:
+
+                    Presentation/API
+                           ↓
+                    Application Services
+                           ↓
+       ┌───────────────────┼───────────────────┐
+       ↓                   ↓                   ↓
+   Purchase            Sales/Orders        Finance
+       ↓                   ↓                   ↓
+   Inventory          Production          Loans/Chits
+       └───────────────────┼───────────────────┘
+                           ↓
+                    Shared Domain Rules
+                           ↓
+                       PostgreSQL
+
+However, avoid making every module directly call every other module.
+
+For example, this is dangerous:
+
+Purchase → Inventory → Finance → Orders → Production → Purchase
+
+That creates circular dependencies.
+
+Instead, use:
+
+Application services
+Clear interfaces
+Domain events where appropriate
+Shared transaction orchestration only at use-case boundaries
+4.9.23 Example: Complete Customer Payment Dependency
+
+When a customer makes a payment:
+
+Customer Payment API
+        ↓
+Payment Application Service
+        ↓
+Validate Customer
+        ↓
+Find Outstanding Orders
+        ↓
+Allocate Payment Oldest-First
+        ↓
+Create Financial Transaction
+        ↓
+Update Cash/Bank
+        ↓
+Resolve Relevant Notifications
+        ↓
+Commit Database Transaction
+
+Modules involved:
+
+Customer
+Orders
+Receivables
+Finance
+Notifications
+
+But the user should experience this as one business action:
+
+“Record customer payment.”
+
+4.9.24 Example: Complete Material Receiving Dependency
+Receive Material
+      ↓
+Purchase Module validates purchase
+      ↓
+Material Receipt created
+      ↓
+Inventory movement recorded
+      ↓
+Purchase received quantity updated
+      ↓
+Purchase status recalculated
+      ↓
+Supplier payable/adjustment updated if necessary
+      ↓
+Low-stock status recalculated
+
+This is a cross-module business transaction.
+
+4.9.25 Final Dependency Matrix
+Module	Depends mainly on
+Purchase	Supplier, Inventory, Finance
+Inventory	Purchase, Sales, Production, Outsourcing
+Customer Orders	Customer, Inventory, Production, Outsourcing, Payments
+Production	Inventory, Orders, Workers
+Outsourcing	Inventory, Orders, Manufacturers, Finance
+Customer Payments	Customers, Orders, Finance
+Finance	Payments, Expenses, Loans, Chits, Accounts
+Expenses	Finance, Accounts
+Chits	Finance, Cash Account
+Loans	Finance, Accounts
+Bills/Documents	Orders, Purchases, Expenses, Payments
+Notifications	Purchases, Orders, Finance, Inventory, Loans
+Dashboard	Almost all modules, read-only
+4.9.26 Key Architectural Conclusion
+
+SmartSilk should be designed as a:
+
+Modular monolith with clear domain boundaries and controlled cross-module interactions.
+
+Not:
+
+Every module directly edits every other module's tables
+
+Instead:
+
+Business Use Case
+      ↓
+Application Service
+      ↓
+Domain Validation
+      ↓
+Relevant Module Operations
+      ↓
+Financial/Inventory Consistency
+      ↓
+Database Transaction
+
+For example:
+
+RecordCustomerPayment() should orchestrate payment allocation and financial recording, rather than allowing the frontend to separately update payment, outstanding, and bank balance.
+
+Step 4.9 completed
+
+We have now defined:
+
+Which modules depend on each other
+Which dependencies are strong or optional
+How material, order, and financial flows connect
+Why Dashboard and Notifications are consumers rather than sources of truth
+Why direct cross-module database manipulation should be avoided
+Why a modular monolith is suitable for SmartSilk
+

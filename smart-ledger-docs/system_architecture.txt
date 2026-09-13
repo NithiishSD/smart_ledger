@@ -1,0 +1,909 @@
+Step 6 — System Architecture
+
+Now we move from “what SmartSilk contains” to “how all those parts will work together.”
+
+The architecture must satisfy two goals:
+
+Finish a reliable MVP within ~1 month
+Teach you production-grade software architecture that can scale later
+
+So we will deliberately avoid overengineering.
+
+6.1 Architecture Decision
+
+For SmartSilk, I recommend:
+
+Modular Monolith + Layered Architecture + REST API + PostgreSQL
+
+Not microservices.
+
+The high-level architecture is:
+
+                    ┌──────────────────────┐
+                    │   Kotlin Frontend    │
+                    │ Android / Web Client │
+                    └──────────┬───────────┘
+                               │
+                          HTTPS / REST
+                               │
+                    ┌──────────▼───────────┐
+                    │    Spring Boot API   │
+                    │                      │
+                    │   Authentication     │
+                    │   REST Controllers   │
+                    └──────────┬───────────┘
+                               │
+                ┌──────────────▼──────────────┐
+                │       Application Layer     │
+                │                             │
+                │ Purchase │ Orders │ Finance │
+                │ Inventory│ Prod.  │ Outsource│
+                └──────────────┬──────────────┘
+                               │
+                ┌──────────────▼──────────────┐
+                │         Domain Layer         │
+                │                              │
+                │ Business Rules / Validation  │
+                │ Entities / Value Objects     │
+                └──────────────┬──────────────┘
+                               │
+                ┌──────────────▼──────────────┐
+                │     Infrastructure Layer     │
+                │                              │
+                │ PostgreSQL                   │
+                │ File Storage                 │
+                │ WhatsApp / AI integrations   │
+                │ Scheduled Jobs               │
+                └──────────────────────────────┘
+6.2 Why Modular Monolith?
+
+You may wonder:
+
+“If I want to learn scalable architecture, why not microservices?”
+
+Because microservices solve problems you don't currently have.
+
+Your current project has:
+
+One team
+One application
+One primary database
+~1 month deadline
+Strongly connected financial and inventory transactions
+
+Microservices would introduce:
+
+Service-to-service communication
+Network failures
+Distributed transactions
+Service discovery
+API gateways
+Multiple deployments
+Distributed logging
+Distributed tracing
+Database synchronization
+Message brokers
+
+That is a huge amount of infrastructure for a problem that doesn't require it yet.
+
+6.3 But We Still Design for Future Microservices
+
+This is important.
+
+We aren't building a monolithic mess.
+
+We are building a:
+
+Modular monolith
+
+Meaning:
+
+One application
+      ↓
+Multiple well-defined modules
+      ↓
+Clear responsibilities
+      ↓
+Controlled communication
+      ↓
+Can potentially extract modules later
+
+For example:
+
+SmartSilk Backend
+│
+├── customer
+├── supplier
+├── procurement
+├── inventory
+├── order
+├── production
+├── outsourcing
+├── workforce
+├── finance
+├── loan
+├── chit
+├── notification
+└── reporting
+
+These are logical modules, not separate applications.
+
+6.4 The Four-Layer Architecture
+
+Within each module, we should conceptually use:
+
+Presentation
+     ↓
+Application
+     ↓
+Domain
+     ↓
+Infrastructure
+
+Let's understand why.
+
+6.5 Layer 1 — Presentation Layer
+
+This is the API boundary.
+
+Responsibilities:
+
+Receive HTTP requests
+Validate request structure
+Authenticate user
+Authorize access
+Convert request → application command
+Return response
+
+Examples:
+
+POST /customers
+POST /purchases
+POST /material-receipts
+POST /orders
+POST /payments
+GET  /inventory
+GET  /dashboard
+
+The controller should not contain business logic.
+
+Bad:
+
+Controller
+ ├── calculate outstanding
+ ├── update stock
+ ├── validate payment
+ ├── update supplier balance
+ └── save everything
+
+Good:
+
+Controller
+     ↓
+Application Service
+     ↓
+Business operation
+6.6 Layer 2 — Application Layer
+
+This layer orchestrates business operations.
+
+Think of it as:
+
+“What use case is the user trying to perform?”
+
+Examples:
+
+CreatePurchase
+ReceiveMaterial
+ReturnMaterial
+CreateCustomerOrder
+StartProduction
+CompleteProduction
+CreateOutsourcingJob
+ReceiveOutsourcedWarp
+RecordCustomerPayment
+RecordSupplierPayment
+RecordExpense
+RecordLoanPayment
+
+For example:
+
+ReceiveMaterial
+       ↓
+Validate Purchase
+       ↓
+Create Material Receipt
+       ↓
+Create Material Movement
+       ↓
+Update Purchase receiving state
+       ↓
+Commit transaction
+
+The application layer coordinates this operation.
+
+6.7 Layer 3 — Domain Layer
+
+This contains the actual business rules.
+
+For SmartSilk, this is extremely important.
+
+Examples:
+
+Cannot consume more material than available.
+
+Cannot cancel an order after production starts.
+
+Supplier payment should follow oldest-first allocation.
+
+Loan principal repayment cannot exceed outstanding principal.
+
+Chit transaction must use cash.
+
+Vuda warp cannot enter internal manufacturing flow.
+
+Production output + wastage + discrepancy must reconcile with input.
+
+These rules should not depend on:
+
+HTTP
+Android
+PostgreSQL
+JSON
+UI
+
+That is what makes them domain logic.
+
+6.8 Layer 4 — Infrastructure Layer
+
+This handles external technology.
+
+Examples:
+
+PostgreSQL
+Spring Data JPA
+Flyway
+File storage
+WhatsApp API
+Voice AI provider
+Email/SMS
+Redis
+Scheduled jobs
+
+The domain shouldn't care whether data is stored in:
+
+PostgreSQL
+MySQL
+MongoDB
+
+The infrastructure layer handles that concern.
+
+6.9 Module Architecture
+
+Now let's map the actual SmartSilk modules.
+
+SmartSilk
+│
+├── Identity & Access
+│
+├── Parties
+│   ├── Customer
+│   ├── Supplier
+│   ├── Manufacturer
+│   └── Worker
+│
+├── Procurement
+│   └── Purchase
+│
+├── Inventory
+│   └── Material Movement
+│
+├── Orders
+│   └── Customer Order
+│
+├── Production
+│   └── Production Batch
+│
+├── Outsourcing
+│   └── Outsourcing Job
+│
+├── Workforce
+│   └── Work Record
+│
+├── Finance
+│   ├── Payment
+│   ├── Financial Transaction
+│   ├── Financial Account
+│   └── Expense
+│
+├── Loans
+│
+├── Chits
+│
+├── Documents
+│
+├── Notifications
+│
+└── Reporting
+6.10 Module Ownership
+
+This is one of the most important architecture decisions.
+
+Each module should have an owner for its business concepts.
+
+Concept	Owning Module
+Customer	Parties
+Supplier	Parties
+Manufacturer	Parties
+Worker	Parties/Workforce
+Purchase	Procurement
+Material Receipt	Procurement
+Material Movement	Inventory
+Customer Order	Orders
+Production Batch	Production
+Outsourcing Job	Outsourcing
+Work Record	Workforce
+Payment	Finance
+Financial Transaction	Finance
+Financial Account	Finance
+Expense	Finance
+Loan	Loans
+Chit	Chits
+Notification	Notifications
+Dashboard/report	Reporting
+
+This prevents a common architectural problem:
+
+Every module directly editing every other module's data.
+
+6.11 Example: Customer Payment
+
+Suppose the user records:
+
+Kumar paid ₹20,000 through UPI.
+
+The request flow becomes:
+
+Kotlin UI
+   ↓
+POST /payments
+   ↓
+Payment Controller
+   ↓
+Payment Application Service
+   ↓
+Validate Customer
+   ↓
+Validate Order / Advance
+   ↓
+Create Payment
+   ↓
+Create Payment Allocation
+   ↓
+Create Financial Transaction
+   ↓
+Update derived outstanding
+   ↓
+Commit PostgreSQL transaction
+
+Notice that the controller doesn't calculate everything.
+
+6.12 Example: Receiving Raw Silk
+
+Suppose:
+
+Purchase = 180 kg
+Received today = 100 kg
+
+Flow:
+
+Frontend
+   ↓
+Receive Material API
+   ↓
+Procurement Application Service
+   ↓
+Validate Purchase
+   ↓
+Create Material Receipt: 100 kg
+   ↓
+Inventory Service
+   ↓
+Create Material Movement: +100 kg
+   ↓
+Purchase becomes PARTIALLY_RECEIVED
+   ↓
+Database Transaction Commit
+
+This is a very important architecture pattern.
+
+6.13 Transaction Boundary
+
+Financial and inventory operations must be atomic.
+
+For example:
+
+Receive Material
+
+should not produce:
+
+Material Receipt saved ✓
+Inventory movement failed ✗
+Purchase status not updated ✗
+
+That would create inconsistent data.
+
+Instead:
+
+BEGIN TRANSACTION
+
+Create receipt
+Create material movement
+Update purchase state
+
+COMMIT
+
+If something fails:
+
+ROLLBACK
+
+This is one reason PostgreSQL + Spring transactional boundaries are important.
+
+6.14 Example: Production Completion
+
+Suppose:
+
+Input = 100 kg
+Output = 94 kg
+Wastage = 4 kg
+Discrepancy = 2 kg
+
+The operation needs to atomically perform:
+
+Production → COMPLETED
+
+Raw/WIP inventory
+        ↓
+decrease
+
+Finished inventory
+        ↓
+increase 94 kg
+
+Wastage
+        ↓
+record 4 kg
+
+Discrepancy
+        ↓
+record 2 kg
+
+Either the entire operation succeeds or none of it should.
+
+6.15 Database Architecture
+
+For MVP:
+
+Spring Boot
+     ↓
+PostgreSQL
+
+One PostgreSQL database.
+
+But logically organized around modules.
+
+We don't need:
+
+Customer DB
+Inventory DB
+Finance DB
+Production DB
+
+That would create unnecessary distributed-data complexity.
+
+6.16 Database Ownership
+
+Even with one database, modules should have conceptual ownership.
+
+For example:
+
+procurement
+    purchases
+    material_receipts
+
+inventory
+    material_movements
+
+orders
+    customer_orders
+    order_items
+
+production
+    production_batches
+
+outsourcing
+    outsourcing_jobs
+
+finance
+    payments
+    payment_allocations
+    financial_transactions
+    financial_accounts
+    expenses
+
+This makes the system easier to evolve.
+
+6.17 REST API Boundary
+
+The frontend should never directly access PostgreSQL.
+
+Correct:
+
+Kotlin
+   ↓
+REST API
+   ↓
+Spring Boot
+   ↓
+PostgreSQL
+
+Not:
+
+Kotlin
+   ↓
+PostgreSQL
+
+Why?
+
+Because the backend owns:
+
+Authentication
+Authorization
+Validation
+Business rules
+Transactions
+Auditability
+Data integrity
+6.18 Authentication Architecture
+
+SmartSilk should have backend-controlled authentication.
+
+Conceptually:
+
+User
+ ↓
+Login
+ ↓
+Authentication
+ ↓
+Access Token
+ ↓
+API Requests
+ ↓
+Authentication Filter
+ ↓
+Authorization
+ ↓
+Controller
+
+For the MVP:
+
+Spring Security + JWT
+
+is a reasonable choice.
+
+Later, you could move to an external identity provider if the system becomes larger.
+
+6.19 Authorization
+
+Don't initially create hundreds of permissions.
+
+Start with a small role model.
+
+For example:
+
+OWNER
+ADMIN
+STAFF
+
+Potential permissions:
+
+View financial information
+Create transactions
+Modify orders
+Record payments
+View reports
+Manage users
+
+The owner should have complete access.
+
+6.20 Background Jobs
+
+Some operations should not depend on the user manually checking everything.
+
+Examples:
+
+Supplier due reminder
+Customer outstanding reminder
+Loan reminder
+Outsourcing pending reminder
+
+Architecture:
+
+Scheduler
+   ↓
+Check business conditions
+   ↓
+Generate Notification
+   ↓
+Notification delivery
+
+For MVP:
+
+Spring Scheduler / scheduled jobs
+
+is enough.
+
+No Kafka required.
+
+6.21 External Integrations
+
+External services should sit outside the core domain.
+
+For example:
+
+                    ┌── WhatsApp API
+                    │
+SmartSilk Backend ──┼── Voice AI
+                    │
+                    ├── File Storage
+                    │
+                    └── Email/SMS
+
+The core business logic should not depend directly on a particular provider.
+
+For example:
+
+Notification Service
+        ↓
+Notification Provider Interface
+        ↓
+WhatsApp implementation
+
+This makes providers replaceable.
+
+6.22 Voice AI Architecture
+
+Voice AI should not directly modify the database.
+
+Instead:
+
+Voice Input
+    ↓
+Speech-to-Text
+    ↓
+Intent Extraction
+    ↓
+Structured Command
+    ↓
+Validation
+    ↓
+User Confirmation
+    ↓
+Application Service
+    ↓
+Database
+
+Example:
+
+“Record ₹5,000 received from Kumar.”
+
+AI produces something conceptually like:
+
+Action:
+RecordCustomerPayment
+
+Customer:
+Kumar
+
+Amount:
+5000
+
+Then SmartSilk validates it.
+
+AI is an interface, not the source of truth.
+
+6.23 Dashboard Architecture
+
+The dashboard should not maintain its own independent business numbers.
+
+Instead:
+
+Dashboard API
+      ↓
+Read data from modules
+      ↓
+Calculate/aggregate
+      ↓
+Return dashboard view
+
+For example:
+
+GET /dashboard/summary
+
+could provide:
+
+Cash
+Bank
+Customer Receivables
+Supplier Payables
+Raw Silk
+External WIP
+Pending Orders
+Pending Payments
+
+All derived from source data.
+
+Later, if dashboard queries become expensive, we can introduce:
+
+Read models
+Materialized views
+Caching
+Redis
+
+But not initially.
+
+6.24 Architecture for the One-Month Project
+
+Your actual MVP architecture should therefore be:
+
+                    ┌─────────────────────┐
+                    │   Kotlin Frontend   │
+                    └──────────┬──────────┘
+                               │
+                              REST
+                               │
+                    ┌──────────▼──────────┐
+                    │    Spring Security  │
+                    │       + JWT         │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │    REST Controllers  │
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────▼────────────────┐
+              │       Application Services      │
+              │                                │
+              │ Procurement   Orders           │
+              │ Inventory     Production       │
+              │ Outsourcing   Finance          │
+              │ Workforce     Loans            │
+              │ Chits         Notifications    │
+              └────────────────┬────────────────┘
+                               │
+              ┌────────────────▼────────────────┐
+              │          Domain Rules           │
+              └────────────────┬────────────────┘
+                               │
+              ┌────────────────▼────────────────┐
+              │          PostgreSQL             │
+              └─────────────────────────────────┘
+
+              External integrations:
+              ├── WhatsApp
+              ├── Voice AI
+              └── File storage
+6.25 What We Are Deliberately NOT Building
+
+For the first version:
+
+❌ Microservices
+❌ Kubernetes
+❌ Kafka
+❌ Service mesh
+❌ Multiple databases
+❌ Distributed transactions
+❌ Event sourcing
+❌ CQRS everywhere
+❌ Complex API gateway
+❌ Complex caching
+
+This isn't because these technologies are bad.
+
+It's because:
+
+Architecture should solve the project's problems, not demonstrate how many technologies we know.
+
+6.26 Future Evolution
+
+If SmartSilk eventually becomes a large commercial system, the architecture can evolve:
+
+                 API Gateway
+                      │
+       ┌──────────────┼──────────────┐
+       ↓              ↓              ↓
+ Procurement      Inventory       Finance
+ Service          Service         Service
+       │              │              │
+       └──────────────┼──────────────┘
+                      ↓
+                Event Platform
+                      ↓
+                Analytics / AI
+
+But this should happen only when there is a genuine need.
+
+The current modular monolith gives us a migration path.
+
+6.27 Step 6 Architecture Decisions — Freeze
+
+For the MVP, let's lock these decisions:
+
+Area	Decision
+Architecture	Modular Monolith
+Backend	Java + Spring Boot
+API	REST
+Database	PostgreSQL
+Authentication	Spring Security + JWT
+ORM	JPA/Hibernate
+DB migrations	Flyway
+Transactions	PostgreSQL + Spring transactions
+Background jobs	Spring Scheduler
+Frontend	Kotlin
+Financial consistency	ACID transactions
+Inventory consistency	Material movements
+External integrations	Isolated adapters
+AI	Confirmation-based
+Caching	Only if justified
+Redis	Optional/post-MVP
+Kafka	No
+Kubernetes	No
+Microservices	No for MVP
+6.28 The Key Architecture Principle
+
+The most important thing I want you to understand from this stage is this:
+
+SmartSilk is not a collection of CRUD screens. It is a set of business operations that must maintain consistency across material, obligations, and money.
+
+For example:
+
+Receive 100 kg silk
+
+is not simply:
+
+INSERT INTO inventory
+
+It is:
+
+Purchase
+    ↓
+Material Receipt
+    ↓
+Material Movement
+    ↓
+Inventory
+    ↓
+Purchase receiving state
+
+Similarly:
+
+Customer pays ₹20,000
+
+is:
+
+Payment
+    ↓
+Payment Allocation
+    ↓
+Financial Transaction
+    ↓
+Cash/Bank Account
+    ↓
+Customer Outstanding
+
+That mindset will make your implementation much stronger than simply building CRUD APIs.
+
+Step 6 is now structurally complete.
+
+

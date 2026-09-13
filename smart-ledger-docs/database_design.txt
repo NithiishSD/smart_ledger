@@ -1,0 +1,1199 @@
+Step 7 — Database Design
+
+Now we convert the domain model into an actual PostgreSQL database design.
+
+The important distinction is:
+
+Domain model tells us what the business means. Database design tells us how we persist that meaning safely.
+
+We should design the database before creating JPA entities, otherwise it is easy to let Java classes accidentally dictate the business model.
+
+7.1 Database Design Goals
+
+SmartSilk's database must guarantee:
+
+Financial records are not accidentally lost.
+Inventory cannot silently become inconsistent.
+Historical prices and rates remain unchanged.
+Payments can be allocated correctly.
+Partial purchases and returns are supported.
+Production and outsourcing can be traced.
+Cash and each bank account remain separate.
+Important relationships are enforced by foreign keys.
+Invalid states are prevented as much as possible by database constraints.
+The schema remains understandable enough for you to maintain.
+7.2 PostgreSQL as the Source of Truth
+
+For the MVP:
+
+Kotlin
+   ↓
+Spring Boot
+   ↓
+PostgreSQL
+
+PostgreSQL is the authoritative persistent store.
+
+Do not keep important business data only in:
+
+frontend state
+Redis
+memory
+generated reports
+AI context
+dashboard caches
+
+Those can be temporary representations.
+
+7.3 Database Organization
+
+We don't need separate databases for every module.
+
+One database is enough:
+
+smartsilk
+
+Conceptually:
+
+smartsilk
+│
+├── identity
+├── parties
+├── procurement
+├── inventory
+├── orders
+├── production
+├── outsourcing
+├── workforce
+├── finance
+├── loans
+├── chits
+├── documents
+└── notifications
+
+Whether these become PostgreSQL schemas or simply table naming/package boundaries can be decided during implementation.
+
+For your one-month project, one PostgreSQL schema with clear table names is simpler.
+
+7.4 ID Strategy
+
+Every major entity needs a stable primary key.
+
+For example:
+
+customer.id
+supplier.id
+purchase.id
+customer_order.id
+payment.id
+
+I recommend using:
+
+UUID identifiers
+
+rather than exposing sequential business IDs as the primary key.
+
+Why?
+
+Because:
+
+1
+2
+3
+4
+
+is predictable.
+
+UUIDs are better suited to APIs and future distributed systems.
+
+However, users should still see human-friendly references such as:
+
+PUR-2026-0012
+ORD-2026-0048
+PAY-2026-0071
+
+So we separate:
+
+Internal ID
++
+Business Reference Number
+7.5 Common Audit Fields
+
+Most important tables should have:
+
+id
+created_at
+updated_at
+
+For important transactional records, also consider:
+
+created_by
+updated_by
+
+This gives us basic auditability.
+
+7.6 Soft Delete vs Hard Delete
+
+This is especially important for financial data.
+
+Do not physically delete:
+
+payments
+financial transactions
+purchases
+material movements
+expenses
+loans
+chit transactions
+
+Instead, use status/correction/reversal mechanisms.
+
+For master data such as a customer:
+
+ACTIVE
+INACTIVE
+
+is generally better than deleting the customer.
+
+7.7 Party Tables
+customers
+
+Conceptually:
+
+customers
+-----------
+id
+name
+phone
+whatsapp_number
+address
+credit_terms
+status
+created_at
+updated_at
+suppliers
+suppliers
+-----------
+id
+name
+phone
+whatsapp_number
+address
+default_credit_period
+status
+created_at
+updated_at
+manufacturers
+manufacturers
+--------------
+id
+name
+phone
+address
+status
+notes
+created_at
+updated_at
+workers
+workers
+--------
+id
+name
+phone
+worker_type
+payment_basis
+current_rate
+status
+created_at
+updated_at
+
+The important point is that current_rate does not determine historical earnings.
+
+Historical rates are captured in work_records.
+
+7.8 Procurement Tables
+purchases
+purchases
+----------
+id
+supplier_id
+purchase_date
+ordered_weight
+rate_per_kg
+total_amount
+payment_type
+credit_period
+due_date
+bill_reference
+status
+notes
+created_at
+updated_at
+Important
+
+total_amount should correspond to the recorded purchase terms.
+
+Do not calculate historical purchases using today's silk price.
+
+7.9 Material Receipts
+material_receipts
+material_receipts
+------------------
+id
+purchase_id
+receipt_date
+received_weight
+accepted_weight
+returned_weight
+condition
+status
+notes
+created_at
+updated_at
+
+Relationship:
+
+Purchase 1 ─── N Material Receipts
+
+Example:
+
+Purchase P001
+Ordered = 180 kg
+
+Receipt R001 = 100 kg
+Receipt R002 = 80 kg
+
+The purchase is then fully received.
+
+7.10 Why Receipt and Purchase Must Be Separate
+
+Consider:
+
+Purchase = 180 kg
+Received = 100 kg
+
+If we store only one purchase quantity, we lose the distinction between:
+
+“We ordered 180 kg”
+
+and
+
+“Only 100 kg has physically arrived.”
+
+This distinction matters for:
+
+supplier follow-up
+pending purchases
+inventory
+delivery delays
+supplier performance
+7.11 Inventory Tables
+
+The most important inventory table is:
+
+material_movements
+
+Conceptually:
+
+material_movements
+-------------------
+id
+movement_date
+product_type
+quantity
+movement_type
+reference_type
+reference_id
+source_location
+destination_location
+notes
+created_at
+
+Examples:
+
+RECEIPT
+DIRECT_SALE
+PRODUCTION_CONSUMPTION
+PRODUCTION_OUTPUT
+OUTSOURCING_ISSUE
+OUTSOURCING_RECEIPT
+RETURN
+WASTAGE
+CUSTOMER_RETURN
+ADJUSTMENT
+7.12 Why Material Movement Is Central
+
+Suppose SmartSilk has:
+
++180 kg received
+-30 kg direct sale
+-50 kg production
+-40 kg outsourcing
+-5 kg wastage
+
+Then:
+
+Available raw silk
+= 180 - 30 - 50 - 40 - 5
+= 55 kg
+
+The system can derive this from movements.
+
+We don't need an independently editable:
+
+raw_silk_available = 55
+
+because that can become inconsistent.
+
+7.13 Product Type
+
+We need a controlled product type.
+
+For example:
+
+RAW_SILK
+KORA_WARP
+SILK_WARP
+VUDA_WARP
+
+Initially, this can be an application enum backed by a PostgreSQL value/string.
+
+I recommend storing readable strings rather than database-specific enum types for the MVP.
+
+That makes migrations easier.
+
+7.14 Inventory Location / State
+
+We need to distinguish where material currently exists.
+
+Conceptually:
+
+MAIN_STOCK
+INTERNAL_WIP
+EXTERNAL_WIP
+FINISHED_STOCK
+
+For example:
+
+Raw silk → MAIN_STOCK
+Raw silk being processed → INTERNAL_WIP
+Raw silk with manufacturer → EXTERNAL_WIP
+Completed warp → FINISHED_STOCK
+7.15 Customer Orders
+customer_orders
+customer_orders
+----------------
+id
+customer_id
+order_date
+expected_delivery_date
+status
+notes
+created_at
+updated_at
+order_items
+order_items
+------------
+id
+order_id
+product_type
+required_weight
+rate_per_kg
+amount
+warp_specification
+status
+
+Relationship:
+
+Customer Order 1 ─── N Order Items
+
+This gives us flexibility.
+
+Example:
+
+Order O001
+
+Item 1:
+20 kg Kora Warp
+
+Item 2:
+15 kg Silk Warp
+7.16 Why Order Items Matter
+
+If we put everything directly inside customer_orders, we eventually get:
+
+product_type_1
+weight_1
+product_type_2
+weight_2
+product_type_3
+weight_3
+
+That's poor database design.
+
+Instead:
+
+customer_orders
+       ↓
+order_items
+
+allows unlimited order lines.
+
+7.17 Production Tables
+production_batches
+production_batches
+-------------------
+id
+production_type
+start_date
+completion_date
+status
+input_weight
+output_weight
+wastage_weight
+discrepancy_weight
+notes
+
+If production is linked to an order, we need an association.
+
+Because:
+
+Production Batch N ─── N Order Items
+
+So:
+
+production_order_items
+production_order_items
+-----------------------
+production_batch_id
+order_item_id
+allocated_weight
+
+This is a junction table.
+
+7.18 Production and Inventory
+
+A production operation should generate material movements.
+
+For example:
+
+Production starts
+      ↓
+PRODUCTION_CONSUMPTION
+      ↓
+Internal WIP
+
+Then:
+
+Production completes
+      ↓
+PRODUCTION_OUTPUT
+      ↓
+Finished Stock
+
+The production table describes the business operation.
+
+The material movement table records the physical inventory effect.
+
+That separation is important.
+
+7.19 Outsourcing Tables
+outsourcing_jobs
+outsourcing_jobs
+-----------------
+id
+manufacturer_id
+order_item_id      nullable
+product_type
+date_sent
+quantity_sent
+expected_output
+quantity_received
+wastage_weight
+discrepancy_weight
+rate_per_kg
+total_payable
+status
+payment_status
+notes
+
+The order reference should be nullable because outsourcing can happen before a customer order exists.
+
+7.20 Outsourcing and Inventory
+
+Sending material:
+
+OUTSOURCING_ISSUE
+
+Receiving finished warp:
+
+OUTSOURCING_RECEIPT
+
+Therefore:
+
+Main Stock
+    ↓ -100 kg
+External WIP
+    ↓
+Manufacturer
+
+Then:
+
+External WIP
+    ↓
+Finished Stock
+7.21 Work Records
+work_records
+work_records
+-------------
+id
+worker_id
+production_batch_id
+work_date
+work_type
+hours
+weight_processed
+rate
+earnings
+payment_status
+notes
+
+Important:
+
+Store the rate applicable at the time of work.
+
+Suppose:
+
+June rate = ₹30/kg
+July rate = ₹35/kg
+
+A June record must remain:
+
+rate = ₹30/kg
+
+even after the worker's current rate changes.
+
+7.22 Financial Accounts
+financial_accounts
+financial_accounts
+-------------------
+id
+account_name
+account_type
+opening_balance
+bank_name
+account_number_reference
+status
+created_at
+updated_at
+
+Account types:
+
+CASH
+BANK
+
+For security, sensitive bank details should not be unnecessarily exposed through APIs.
+
+7.23 Financial Transactions
+
+This is one of the most important tables.
+
+financial_transactions
+financial_transactions
+-----------------------
+id
+transaction_date
+account_id
+transaction_type
+direction
+amount
+reference_type
+reference_id
+business_reason
+status
+description
+created_at
+
+Examples:
+
+CUSTOMER_PAYMENT
+SUPPLIER_PAYMENT
+WORKER_PAYMENT
+MANUFACTURER_PAYMENT
+EXPENSE
+LOAN_RECEIVED
+LOAN_PRINCIPAL_REPAYMENT
+LOAN_INTEREST_PAYMENT
+CHIT_CONTRIBUTION
+CHIT_PAYOUT
+PERSONAL_DRAWING
+ACCOUNT_TRANSFER
+REFUND
+7.24 Never Treat All Incoming Money as Revenue
+
+Suppose:
+
+₹1,00,000 received
+
+That could be:
+
+Customer payment
+Loan received
+Chit payout
+Transfer from another bank
+Capital introduced
+
+Only some of these represent business revenue.
+
+Therefore, every financial transaction needs a meaningful classification.
+
+7.25 Payments
+payments
+payments
+---------
+id
+payment_date
+payer_type
+payer_id
+receiver_type
+receiver_id
+amount
+payment_method
+status
+notes
+
+Examples:
+
+Customer → SmartSilk
+SmartSilk → Supplier
+SmartSilk → Worker
+SmartSilk → Manufacturer
+7.26 Payment Allocations
+payment_allocations
+payment_allocations
+--------------------
+id
+payment_id
+reference_type
+reference_id
+allocated_amount
+allocation_type
+created_at
+
+Example:
+
+Payment P001 = ₹50,000
+
+Allocation:
+Order O001 = ₹30,000
+
+Allocation:
+Order O002 = ₹20,000
+
+This is how we preserve settlement history.
+
+7.27 Expense Tables
+expenses
+expenses
+---------
+id
+expense_date
+category
+amount
+payment_method
+financial_account_id
+expense_type
+description
+document_reference
+status
+
+Possible expense classifications:
+
+OPERATING
+PERSONAL
+OTHER
+
+Or a more explicit business/personal classification.
+
+The important point is:
+
+Personal use of business money must not automatically become operating expense.
+
+7.28 Loans
+loans
+loans
+------
+id
+lender_name
+loan_type
+original_principal
+interest_rate
+start_date
+due_date
+status
+notes
+
+Financial transactions then represent:
+
+LOAN_RECEIVED
+LOAN_PRINCIPAL_REPAYMENT
+LOAN_INTEREST_PAYMENT
+7.29 Chits
+chits
+chits
+------
+id
+name
+start_date
+duration
+contribution_amount
+payout_date
+payout_amount
+status
+bidding_details
+notes
+
+Individual contributions/payouts should be represented through financial transactions or, if detailed chit schedules become necessary, a separate transaction table later.
+
+For the MVP, don't overbuild the chit module.
+
+7.30 Bills and Documents
+
+We can use:
+
+documents
+documents
+---------
+id
+document_type
+reference_type
+reference_id
+file_location
+uploaded_at
+uploaded_by
+
+Examples:
+
+PURCHASE_BILL
+SALES_BILL
+BANK_STATEMENT
+GST_DOCUMENT
+OTHER
+
+Then:
+
+Purchase → Document
+Order → Document
+Expense → Document
+7.31 Notifications
+notifications
+notifications
+--------------
+id
+notification_type
+reference_type
+reference_id
+priority
+scheduled_at
+sent_at
+status
+message
+created_at
+
+And:
+
+notification_configurations
+notification_configurations
+----------------------------
+id
+notification_type
+enabled
+reminder_offset
+frequency
+priority
+7.32 Foreign Keys
+
+Foreign keys enforce important relationships.
+
+Examples:
+
+purchases.supplier_id
+        → suppliers.id
+material_receipts.purchase_id
+        → purchases.id
+order_items.order_id
+        → customer_orders.id
+payments
+        → relevant party
+financial_transactions.account_id
+        → financial_accounts.id
+
+This prevents orphaned records.
+
+7.33 Important Database Constraints
+
+The database should enforce basic impossible states.
+
+Examples:
+
+Weight
+weight > 0
+Money
+amount >= 0
+Rates
+rate >= 0
+Production
+output + wastage + discrepancy
+≤/=
+input
+
+The exact enforcement may partly live in application/domain logic because cross-row business rules are difficult to enforce purely with simple SQL constraints.
+
+7.34 Unique Constraints
+
+Examples:
+
+customer business reference
+supplier business reference
+invoice number
+
+Potentially:
+
+phone
+
+but only if the business guarantees phone numbers are unique.
+
+Do not blindly put unique constraints on every seemingly identifying field.
+
+7.35 Indexing Strategy
+
+Indexes should support actual query patterns.
+
+Likely indexes:
+
+customers(name)
+suppliers(name)
+
+purchases(supplier_id)
+purchases(purchase_date)
+
+material_receipts(purchase_id)
+
+material_movements(product_type, movement_date)
+
+customer_orders(customer_id)
+customer_orders(status)
+
+order_items(order_id)
+
+payments(payment_date)
+
+payment_allocations(payment_id)
+
+financial_transactions(account_id, transaction_date)
+
+outsourcing_jobs(manufacturer_id, status)
+
+work_records(worker_id, work_date)
+
+Don't create indexes everywhere.
+
+Indexes improve reads but increase write/storage cost.
+
+7.36 Money Storage
+
+Never store money as floating-point numbers.
+
+Avoid:
+
+FLOAT
+DOUBLE
+
+Use a precise decimal representation.
+
+Conceptually:
+
+DECIMAL / NUMERIC
+
+For example:
+
+₹1250.50
+
+must not become:
+
+1249.999999
+
+Financial precision is non-negotiable.
+
+7.37 Weight Storage
+
+Weight is also important.
+
+Use a fixed-precision decimal representation.
+
+For example:
+
+100.250 kg
+
+should be representable exactly enough for the business.
+
+Don't use floating point for inventory quantities if precision matters.
+
+7.38 Dates and Times
+
+Use appropriate timestamp/date types.
+
+For example:
+
+Business date → DATE
+Actual transaction timestamp → timestamp with timezone where appropriate
+
+A purchase may care about:
+
+purchase_date
+
+while an actual financial transaction may need:
+
+transaction_timestamp
+
+Do not automatically store everything as timestamps.
+
+7.39 Auditability
+
+For financial and inventory records, the system should eventually answer:
+
+Who created this?
+
+When was it created?
+
+Was it corrected?
+
+What was the original value?
+
+This is why we avoid destructive updates/deletes.
+
+For example, if a payment was wrong:
+
+Bad:
+
+UPDATE payment
+SET amount = 50000
+
+without history.
+
+Better:
+
+Original payment
+       ↓
+Correction / reversal
+       ↓
+Corrected transaction
+
+The exact correction mechanism will be designed during backend implementation.
+
+7.40 Database Migration Strategy
+
+We should use:
+
+Flyway
+
+Database changes should be version-controlled.
+
+Conceptually:
+
+V1__create_party_tables.sql
+V2__create_procurement_tables.sql
+V3__create_inventory_tables.sql
+V4__create_order_tables.sql
+V5__create_production_tables.sql
+...
+
+This means your database schema becomes part of the project source code.
+
+Do not manually create production tables through random SQL commands and forget how you created them.
+
+7.41 Initial ER Structure
+
+At a high level:
+
+CUSTOMER
+   │
+   └────< CUSTOMER_ORDER
+                 │
+                 └────< ORDER_ITEM
+                          │
+                ┌─────────┴─────────┐
+                ↓                   ↓
+        PRODUCTION_BATCH     OUTSOURCING_JOB
+                │                   │
+                ↓                   ↓
+          MATERIAL_MOVEMENT ← MATERIAL_MOVEMENT
+
+
+SUPPLIER
+   │
+   └────< PURCHASE
+             │
+             └────< MATERIAL_RECEIPT
+                         │
+                         ↓
+                 MATERIAL_MOVEMENT
+
+
+WORKER
+   │
+   └────< WORK_RECORD
+
+
+PAYMENT
+   │
+   └────< PAYMENT_ALLOCATION
+
+
+FINANCIAL_ACCOUNT
+   │
+   └────< FINANCIAL_TRANSACTION
+
+
+LOAN
+   │
+   └────< FINANCIAL_TRANSACTION
+
+
+CHIT
+   │
+   └────< FINANCIAL_TRANSACTION
+
+This is the backbone of SmartSilk's database.
+
+7.42 One Important Database Decision
+
+We should not immediately create a gigantic generic table such as:
+
+transactions
+------------
+id
+type
+source
+destination
+amount
+weight
+party
+order
+purchase
+worker
+loan
+chit
+...
+
+That looks flexible but becomes difficult to validate and understand.
+
+Instead, maintain meaningful domain tables:
+
+Purchase
+Payment
+Expense
+Loan
+Chit
+Material Movement
+Production Batch
+Outsourcing Job
+
+Then connect them.
+
+This is much easier to reason about.
+
+7.43 Database Design Principles to Freeze
+
+For SmartSilk:
+
+Principle 1
+
+Financial data uses exact numeric types.
+
+Principle 2
+
+Inventory is movement-based.
+
+Principle 3
+
+Business operations and financial transactions remain separate.
+
+Principle 4
+
+Historical prices/rates are immutable after recording unless explicitly corrected.
+
+Principle 5
+
+Important financial/inventory records are not hard-deleted.
+
+Principle 6
+
+Foreign keys protect relationships.
+
+Principle 7
+
+Database constraints prevent simple invalid states.
+
+Principle 8
+
+Business invariants are enforced in the application/domain layer.
+
+Principle 9
+
+All schema changes use Flyway migrations.
+
+Principle 10
+
+The frontend never directly accesses PostgreSQL.
+
+Step 7 Status
+
+We now have the conceptual database design.
+
+The major tables are:
+
+PARTIES
+├── customers
+├── suppliers
+├── manufacturers
+└── workers
+
+PROCUREMENT
+├── purchases
+└── material_receipts
+
+INVENTORY
+└── material_movements
+
+ORDERS
+├── customer_orders
+└── order_items
+
+PRODUCTION
+├── production_batches
+└── production_order_items
+
+OUTSOURCING
+└── outsourcing_jobs
+
+WORKFORCE
+└── work_records
+
+FINANCE
+├── payments
+├── payment_allocations
+├── financial_accounts
+├── financial_transactions
+└── expenses
+
+FINANCIAL OBLIGATIONS
+├── loans
+└── chits
+
+DOCUMENTS
+└── documents
+
+NOTIFICATIONS
+├── notifications
+└── notification_configurations

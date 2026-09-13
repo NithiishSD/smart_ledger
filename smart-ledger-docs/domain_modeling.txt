@@ -1,0 +1,121 @@
+#entity classification (4.2.2):
+| Entity                        | Why it is an Entity                                           |
+| ----------------------------- | ------------------------------------------------------------- |
+| **Customer**                  | Has independent identity and multiple orders/payments         |
+| **Supplier**                  | Has independent identity and multiple purchases/payments      |
+| **Purchase**                  | Represents a specific purchase event                          |
+| **Customer Order**            | Represents a specific customer commitment                     |
+| **Raw Material Lot**          | Represents identifiable purchased/available raw silk material |
+| **Production Batch**          | Represents an in-house production activity                    |
+| **Outsourcing Job**           | Represents a specific job given to an external manufacturer   |
+| **Manufacturer / Job Worker** | External party performing outsourced production               |
+| **Worker**                    | Has independent identity and work/payment history             |
+| **Work Record**               | Records work performed by a worker                            |
+| **Payment**                   | Represents a specific money-receipt/payment event             |
+| **Expense**                   | Represents a specific expense event                           |
+| **Refund**                    | Represents an amount returned/credited to a customer          |
+| **Loan**                      | Has its own lifecycle, principal and interest                 |
+| **Chit**                      | Has duration, contributions, bidding and lump-sum activity    |
+| **Financial Account**         | Represents Cash or a specific bank account                    |
+| **Financial Transaction**     | Represents movement of money                                  |
+| **Bill/Invoice**              | Represents a generated business document                      |
+
+#Supporting Entities(4.2.3):
+
+Some entities aren't the heart of the business but are still useful.
+
+Notification
+Notification
+
+Because a notification has its own lifecycle:
+
+Created
+→ Sent
+→ Read
+→ Resolved
+
+So it deserves an identity.
+
+Notification Configuration
+
+This stores things such as:
+
+Customer overdue reminder
+→ 2 days before
+→ enabled
+→ high priority
+
+This can be an entity/configuration record.
+
+Stock Threshold
+
+Because you want configurable thresholds:
+
+Raw Silk
+Threshold = 50 kg
+
+This can be associated with the relevant material/product rather than treated as a standalone business transaction.
+
+
+
+
+final classification:
+
+SMARTSILK DOMAIN
+│
+├── ENTITIES
+│   │
+│   ├── Customer
+│   ├── Supplier
+│   ├── Purchase
+│   ├── Customer Order
+│   ├── Raw Material Lot
+│   ├── Production Batch
+│   ├── Outsourcing Job
+│   ├── Manufacturer
+│   ├── Worker
+│   ├── Work Record
+│   ├── Payment
+│   ├── Expense
+│   ├── Refund
+│   ├── Loan
+│   ├── Chit
+│   ├── Financial Account
+│   ├── Financial Transaction
+│   ├── Bill / Invoice
+│   └── Notification
+│
+├── VALUE OBJECTS
+│   │
+│   ├── Money
+│   ├── Weight
+│   ├── Date / DateTime
+│   ├── Credit Period
+│   ├── Due Date
+│   ├── Contact Information
+│   ├── Address
+│   └── Warp Specification
+│
+└── ENUMS / CONTROLLED TYPES
+    │
+    ├── Product Type
+    ├── Payment Method
+    ├── Transaction Type
+    ├── Production Mode
+    ├── Order Status
+    ├── Payment Status
+    └── Other Status/Category Types
+
+#also derived types:
+Derived states
+
+Things such as:
+
+Current stock
+Customer outstanding
+Supplier outstanding
+Cash balance
+Bank balance
+Worker outstanding
+Loan outstanding
+Profit/Loss

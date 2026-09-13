@@ -1,0 +1,1022 @@
+Step 8 — API & Backend Design
+
+Now we move from database architecture to the actual Spring Boot backend.
+
+The goal of this step is not to start writing controllers immediately. First we need a backend architecture that makes SmartSilk:
+
+maintainable
+testable
+secure
+transaction-safe
+easy to extend
+ready for future Voice AI/WhatsApp integration
+8.0 Backend Architecture
+
+Our backend follows:
+
+Client
+  │
+  ▼
+REST Controller
+  │
+  ▼
+Application Service
+  │
+  ▼
+Domain / Business Rules
+  │
+  ▼
+Repository
+  │
+  ▼
+PostgreSQL
+
+But there is an important addition:
+
+Controller
+    ↓
+DTO
+    ↓
+Application Service
+    ↓
+Domain Rules
+    ↓
+Repository
+
+The controller should not contain business logic.
+
+8.1 Why Not Put Everything in the Controller?
+
+Bad architecture:
+
+@PostMapping("/payments")
+public Payment createPayment(...) {
+
+    // validate customer
+
+    // calculate outstanding
+
+    // allocate payment
+
+    // update inventory
+
+    // create financial transaction
+
+    // save everything
+}
+
+This quickly becomes a huge controller.
+
+It becomes difficult to:
+
+test
+reuse
+maintain
+secure
+reason about transactions
+
+Instead:
+
+POST /payments
+       │
+       ▼
+PaymentController
+       │
+       ▼
+PaymentApplicationService
+       │
+       ├── validate
+       ├── allocate
+       ├── create payment
+       ├── create financial transaction
+       └── commit
+8.2 Recommended Package Structure
+
+For SmartSilk, I recommend package-by-module with internal layers, rather than one giant global controller/service/repository package.
+
+Example:
+
+com.smartsilk
+│
+├── identity
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── domain
+│   └── dto
+│
+├── parties
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── domain
+│   └── dto
+│
+├── procurement
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── domain
+│   └── dto
+│
+├── inventory
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── domain
+│   └── dto
+│
+├── orders
+│
+├── production
+│
+├── outsourcing
+│
+├── workforce
+│
+├── finance
+│
+├── loans
+│
+├── chits
+│
+├── notifications
+│
+├── documents
+│
+├── reporting
+│
+└── shared
+
+This gives us modular monolith structure.
+
+8.3 Why Package-by-Module?
+
+Imagine you use:
+
+controller/
+service/
+repository/
+entity/
+
+for the entire project.
+
+Eventually:
+
+service/
+  CustomerService
+  SupplierService
+  PurchaseService
+  InventoryService
+  PaymentService
+  LoanService
+  ChitService
+  ...
+
+Everything becomes interconnected.
+
+Instead:
+
+finance/
+    controller/
+    service/
+    repository/
+    domain/
+
+Finance owns its functionality.
+
+This makes a future transition to microservices easier if it is ever required.
+
+But we do not need microservices now.
+
+8.4 Controller Layer
+
+Controllers have one primary responsibility:
+
+Translate HTTP requests into application commands and application results into HTTP responses.
+
+Example conceptual API:
+
+POST /api/v1/payments
+
+Controller receives:
+
+{
+  "partyId": "...",
+  "amount": 50000,
+  "paymentMethod": "BANK_TRANSFER"
+}
+
+It should:
+
+Request
+  ↓
+Validate basic request structure
+  ↓
+Call application service
+  ↓
+Return response
+
+Not:
+
+Controller
+  ↓
+calculate everything
+  ↓
+directly manipulate repositories
+8.5 DTOs — Data Transfer Objects
+
+Never expose your JPA entities directly as your API contract.
+
+Instead use DTOs.
+
+For example:
+
+CreatePaymentRequest
+PaymentResponse
+PaymentAllocationResponse
+
+Why?
+
+Because your database structure and API structure are not the same thing.
+
+8.6 Example
+
+Database might contain:
+
+payments
+--------------------------------
+id
+party_id
+financial_account_id
+direction
+amount
+payment_method
+payment_date
+status
+...
+
+But the frontend may only need:
+
+{
+  "paymentNumber": "PAY-2026-0015",
+  "partyName": "ABC Silks",
+  "amount": 50000,
+  "paymentMethod": "BANK_TRANSFER",
+  "date": "2026-09-11"
+}
+
+The frontend doesn't need:
+
+created_by
+internal UUID
+database metadata
+
+DTOs give us that control.
+
+8.7 Request DTO vs Response DTO
+
+Don't use one object for everything.
+
+For example:
+
+CreatePaymentRequest
+
+is different from:
+
+PaymentResponse
+
+Request:
+
+amount
+partyId
+paymentMethod
+accountId
+date
+allocation information
+
+Response:
+
+paymentNumber
+party
+amount
+status
+allocations
+createdAt
+
+This separation becomes extremely useful later.
+
+8.8 Application Service
+
+This is the heart of the backend.
+
+Think:
+
+What business operation is the user asking the system to perform?
+
+Examples:
+
+CreatePurchase
+ReceiveMaterial
+CreateCustomerOrder
+StartProduction
+CompleteProduction
+CreateOutsourcingJob
+ReceiveOutsourcing
+RecordCustomerPayment
+RecordSupplierPayment
+RecordExpense
+TransferMoney
+
+These are use cases.
+
+8.9 Use-Case Thinking
+
+Instead of thinking:
+
+CRUD Customer
+CRUD Supplier
+CRUD Payment
+
+think:
+
+Receive material
+Issue material
+Complete production
+Record customer payment
+Allocate supplier payment
+
+This is much closer to the actual business.
+
+8.10 Example — Record Customer Payment
+
+The flow should conceptually be:
+
+RecordCustomerPayment
+        │
+        ├── Validate customer
+        │
+        ├── Validate account
+        │
+        ├── Validate amount
+        │
+        ├── Determine allocation
+        │
+        ├── Create Payment
+        │
+        ├── Create Payment Allocation
+        │
+        ├── Create Financial Transaction
+        │
+        └── Commit
+
+One application service coordinates this.
+
+8.11 Domain Layer
+
+The domain layer contains rules that define:
+
+What is valid according to SmartSilk's business?
+
+Examples:
+
+A payment cannot have a negative amount.
+
+Inventory cannot normally become negative.
+
+A locked order cannot be freely modified.
+
+Vuda warp cannot enter internal production.
+
+Production input must equal:
+output + wastage + discrepancy.
+
+These are domain rules.
+
+8.12 Application Logic vs Domain Logic
+
+This distinction is important.
+
+Application logic
+
+Coordinates the operation.
+
+ReceiveMaterialService
+
+might:
+
+load purchase
+validate
+create receipt
+create movement
+update state
+save
+Domain logic
+
+Determines whether the operation is valid.
+
+For example:
+
+Purchase.canReceive(quantity)
+
+could enforce the purchase's receiving rules.
+
+8.13 Repository Layer
+
+Repositories handle persistence.
+
+Conceptually:
+
+PurchaseRepository
+MaterialReceiptRepository
+MaterialMovementRepository
+PaymentRepository
+FinancialTransactionRepository
+
+The application service shouldn't need to know SQL details.
+
+It says:
+
+purchaseRepository.findById(...)
+
+rather than constructing SQL everywhere.
+
+Spring Data JPA will help us here.
+
+8.14 The Complete Flow
+
+For example:
+
+Kotlin App
+    │
+    │ POST /api/v1/payments
+    ▼
+PaymentController
+    │
+    │ CreatePaymentRequest
+    ▼
+PaymentApplicationService
+    │
+    ├── PartyRepository
+    ├── OrderRepository
+    ├── PaymentRepository
+    ├── AllocationRepository
+    └── FinancialTransactionRepository
+             │
+             ▼
+          PostgreSQL
+8.15 Where Does @Transactional Go?
+
+This connects directly to Step 7.5.
+
+Put the transaction around the application use case.
+
+Conceptually:
+
+@Transactional
+recordCustomerPayment(...)
+
+not:
+
+@Transactional
+repository.savePayment(...)
+
+because the entire business operation needs atomicity.
+
+8.16 Why This Matters
+
+Suppose:
+
+Payment saved ✓
+Allocation saved ✓
+Financial transaction failed ✗
+
+If each repository operation commits separately:
+
+Database = inconsistent
+
+With one application transaction:
+
+Payment ✓
+Allocation ✓
+Financial transaction ✗
+       ↓
+ROLLBACK
+
+Everything returns to the previous state.
+
+8.17 API Versioning
+
+I recommend:
+
+/api/v1/...
+
+rather than:
+
+/api/...
+
+Example:
+
+GET /api/v1/customers
+POST /api/v1/purchases
+POST /api/v1/payments
+GET /api/v1/inventory/summary
+
+Why?
+
+Because later you may need:
+
+/api/v2/...
+
+without breaking an existing client.
+
+For a college MVP this might seem unnecessary, but it's a very useful production habit.
+
+8.18 REST API Naming
+
+Use resources rather than verbs.
+
+Good:
+
+POST /api/v1/purchases
+GET /api/v1/purchases/{id}
+
+POST /api/v1/orders
+GET /api/v1/orders/{id}
+
+POST /api/v1/payments
+GET /api/v1/payments/{id}
+
+Avoid:
+
+/createPurchase
+/addPurchase
+/savePurchase
+/doPayment
+
+The HTTP method already communicates the action.
+
+8.19 But Business Actions Can Be Explicit
+
+Some operations aren't simple CRUD.
+
+For example:
+
+POST /api/v1/purchases/{id}/receipts
+
+makes sense because you're recording a material receipt against a purchase.
+
+Similarly:
+
+POST /api/v1/production/{id}/complete
+
+can represent a business action.
+
+This is better than pretending everything is generic CRUD.
+
+8.20 Proposed SmartSilk API Groups
+Parties
+GET    /api/v1/parties
+POST   /api/v1/parties
+GET    /api/v1/parties/{id}
+PUT    /api/v1/parties/{id}
+Procurement
+POST   /api/v1/purchases
+GET    /api/v1/purchases
+GET    /api/v1/purchases/{id}
+
+POST   /api/v1/purchases/{id}/receipts
+Inventory
+GET /api/v1/inventory/summary
+GET /api/v1/inventory/movements
+GET /api/v1/inventory/external-wip
+
+Inventory-changing operations should generally originate from their owning business modules rather than allowing a generic:
+
+POST /inventory/movement
+
+from the frontend.
+
+That prevents clients from arbitrarily manipulating stock.
+
+8.21 Orders
+POST /api/v1/orders
+GET  /api/v1/orders
+GET  /api/v1/orders/{id}
+PUT  /api/v1/orders/{id}
+
+Business actions:
+
+POST /api/v1/orders/{id}/lock
+POST /api/v1/orders/{id}/cancel
+
+Although internally you may eventually make locking automatic when production begins.
+
+8.22 Production
+POST /api/v1/production-batches
+GET  /api/v1/production-batches/{id}
+
+POST /api/v1/production-batches/{id}/complete
+
+The completion operation should execute the atomic inventory transaction we designed earlier.
+
+8.23 Outsourcing
+POST /api/v1/outsourcing-jobs
+GET  /api/v1/outsourcing-jobs/{id}
+
+POST /api/v1/outsourcing-jobs/{id}/issue
+POST /api/v1/outsourcing-jobs/{id}/receive
+8.24 Finance
+POST /api/v1/payments
+GET  /api/v1/payments/{id}
+
+POST /api/v1/expenses
+
+GET /api/v1/finance/accounts
+GET /api/v1/finance/cash-position
+
+Transfers:
+
+POST /api/v1/account-transfers
+8.25 Reporting
+
+Reports are read-oriented:
+
+GET /api/v1/reports/customer-outstanding
+GET /api/v1/reports/supplier-payables
+GET /api/v1/reports/production
+GET /api/v1/reports/expenses
+GET /api/v1/reports/monthly-profitability
+
+And:
+
+GET /api/v1/dashboard/summary
+8.26 HTTP Status Codes
+
+Your API should communicate results properly.
+
+200 OK
+
+Successful read/update.
+
+201 Created
+
+Resource successfully created.
+
+POST /purchases
+→ 201
+204 No Content
+
+Successful operation with no response body.
+
+400 Bad Request
+
+Malformed request.
+
+401 Unauthorized
+
+Not authenticated.
+
+403 Forbidden
+
+Authenticated but not allowed.
+
+404 Not Found
+
+Resource doesn't exist.
+
+409 Conflict
+
+Extremely important for SmartSilk.
+
+Examples:
+
+Insufficient inventory
+Concurrent modification
+Duplicate operation
+Locked order
+Duplicate business reference
+422 Unprocessable Entity
+
+Useful when request structure is valid but domain validation fails, depending on your API convention.
+
+500 Internal Server Error
+
+Unexpected server failure.
+
+8.27 Error Response Design
+
+Don't return random strings like:
+
+"something went wrong"
+
+Use a consistent structure.
+
+Conceptually:
+
+{
+  "timestamp": "...",
+  "status": 409,
+  "code": "INSUFFICIENT_INVENTORY",
+  "message": "Insufficient raw silk available.",
+  "path": "/api/v1/production-batches"
+}
+
+Now the Kotlin application can understand the error.
+
+8.28 Validation
+
+There are two levels.
+
+Request validation
+
+Example:
+
+amount > 0
+phone format
+required field present
+weight > 0
+
+This can use Jakarta Bean Validation.
+
+Domain validation
+
+Example:
+
+Can this purchase receive another 100 kg?
+
+Can this order be modified?
+
+Can this stock be consumed?
+
+Can this payment be allocated?
+
+These belong deeper in the application/domain logic.
+
+Don't rely only on DTO validation.
+
+8.29 Authentication
+
+SmartSilk should not expose:
+
+POST /payments
+
+to unauthenticated users.
+
+The request should go through:
+
+Kotlin App
+     ↓
+JWT
+     ↓
+Spring Security
+     ↓
+Controller
+
+We'll cover Spring Security deeply later in Step 8.
+
+8.30 Authorization
+
+Authentication answers:
+
+Who are you?
+
+Authorization answers:
+
+What are you allowed to do?
+
+For example:
+
+OWNER
+ADMIN
+STAFF
+
+Potential permissions:
+
+PURCHASE_CREATE
+PAYMENT_CREATE
+EXPENSE_CREATE
+REPORT_VIEW
+USER_MANAGE
+
+Even if your first MVP has only one user, designing the backend with authorization boundaries is useful.
+
+8.31 Don't Trust the Frontend
+
+This is critical.
+
+Suppose Kotlin sends:
+
+{
+  "amount": 1000,
+  "customerOutstanding": 50000
+}
+
+The backend should not trust the supplied outstanding amount.
+
+It calculates:
+
+Database source data
+       ↓
+Backend calculation
+       ↓
+Actual outstanding
+
+Frontend values are presentation/input, not authoritative financial truth.
+
+8.32 Same Principle for Inventory
+
+Never allow:
+
+{
+  "newStock": 500
+}
+
+to directly change inventory.
+
+Instead:
+
+Receive 100 kg
+       ↓
+Material Receipt
+       ↓
+Material Movement
+       ↓
+Inventory Balance
+
+The backend derives:
+
+current stock
+
+from the recorded business events.
+
+8.33 The Backend as the Business Authority
+
+This is one of the most important SmartSilk architectural principles:
+
+Kotlin
+  ↓
+requests an operation
+
+Spring Boot
+  ↓
+decides whether operation is valid
+
+PostgreSQL
+  ↓
+persists authoritative state
+
+Not:
+
+Kotlin
+  ↓
+calculates business state
+  ↓
+sends final numbers
+8.34 Recommended Backend Dependency Direction
+
+Keep dependencies roughly like:
+
+Controller
+    ↓
+Application
+    ↓
+Domain
+    ↓
+Infrastructure
+
+Avoid:
+
+Repository
+    ↓
+Controller
+
+or:
+
+Domain
+    ↓
+WhatsApp API
+
+The domain shouldn't know about external infrastructure.
+
+8.35 What About JPA Entities?
+
+A practical Spring Boot implementation can use JPA entities for persistence.
+
+But don't let the entire domain become:
+
+@Entity
+@Getter
+@Setter
+public class Payment {
+    // 50 fields
+}
+
+with every business rule scattered across controllers and repositories.
+
+The entity should still represent meaningful business state.
+
+We'll decide exactly how much domain modeling to use when implementing each module.
+
+8.36 Backend Architecture So Far
+                   Kotlin Client
+                        │
+                        ▼
+                  REST / JSON
+                        │
+                        ▼
+              ┌──────────────────┐
+              │   Controllers     │
+              └────────┬─────────┘
+                       │
+                       ▼
+              ┌──────────────────┐
+              │ Application       │
+              │ Services          │
+              └────────┬─────────┘
+                       │
+             ┌─────────┴─────────┐
+             ▼                   ▼
+       Domain Rules         Repositories
+                                 │
+                                 ▼
+                            PostgreSQL
+
+Cross-cutting:
+
+Spring Security
+Validation
+Transactions
+Exception Handling
+Logging
+Audit
+Idempotency
+
+surround the application.
+
+8.37 The First APIs We Should Actually Build
+
+Don't implement 50 APIs at once.
+
+For SmartSilk, our first vertical slice should prove the architecture.
+
+I recommend:
+
+1. Authentication
+2. Create Supplier
+3. Create Purchase
+4. Receive Material
+5. View Inventory
+6. Create Customer
+7. Create Order
+8. Record Customer Payment
+9. View Customer Outstanding
+
+Why this slice?
+
+Because it exercises:
+
+CRUD
++
+relationships
++
+transactions
++
+inventory
++
+financial data
++
+allocation
++
+reporting
++
+security
+
+Once this works correctly, the rest becomes much easier.
+
+8.38 Step 8 Roadmap
+
+We'll now go through API/backend design in this order:
+
+8.0 Backend Architecture          ✓
+8.1 Package/Module Structure     ✓
+8.2 Controllers & DTOs           ✓
+8.3 Application Services         ✓
+8.4 Domain Services/Rules        → next
+8.5 Repositories & JPA
+8.6 REST API Design
+8.7 Validation
+8.8 Exception Handling
+8.9 Authentication
+8.10 Authorization
+8.11 JWT
+8.12 Transactions in Spring
+8.13 Idempotency
+8.14 Pagination & Filtering
+8.15 OpenAPI
+8.16 Background Jobs
+8.17 External Integrations
+8.18 API Testing
+The key mental model to retain
+
+Controller receives intent → Application Service executes a use case → Domain enforces business rules → Repository persists state → PostgreSQL guarantees data integrity.

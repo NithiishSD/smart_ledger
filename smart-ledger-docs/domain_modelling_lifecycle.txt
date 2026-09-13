@@ -1,0 +1,661 @@
+4.5 Define Entity Lifecycles / States
+4.5.1 First — an important distinction
+
+There are two different things we need to model:
+
+1. Entity state
+
+What is the current business status?
+
+Example:
+
+Customer Order → IN_PROGRESS
+
+2. Financial/material status
+
+What has happened financially or physically?
+
+Example:
+
+Purchase → fully received
+but supplier payment → still outstanding
+
+These should not be unnecessarily combined.
+
+For example:
+
+Purchase
+ ├── Receiving Status → FULLY_RECEIVED
+ └── Payment Status   → OUTSTANDING
+
+This is much better than having one giant state like:
+
+PURCHASE_COMPLETED
+
+because a purchase can be physically complete while financially unpaid.
+
+4.5.2 Purchase Lifecycle
+
+A purchase represents:
+
+“We agreed to buy this material from a supplier.”
+
+Lifecycle
+CREATED / ORDERED
+       ↓
+PARTIALLY_RECEIVED
+       ↓
+FULLY_RECEIVED
+       ↓
+CLOSED
+
+But returns can happen:
+
+FULLY_RECEIVED
+       ↓
+PARTIALLY_RETURNED
+       ↓
+CLOSED
+
+or:
+
+FULLY_RECEIVED
+       ↓
+FULLY_RETURNED
+Important
+
+Payment is separate.
+
+Example:
+
+Purchase = ₹90,000
+Received = 180 kg
+Supplier payment = ₹0
+
+The purchase is:
+
+FULLY_RECEIVED
+
+but financially:
+
+OUTSTANDING
+
+This is exactly why we shouldn't use a single lifecycle state for everything.
+
+Proposed purchase-related statuses
+
+Receiving status
+
+ORDERED
+PARTIALLY_RECEIVED
+FULLY_RECEIVED
+CANCELLED
+
+Financial status
+
+UNPAID
+PARTIALLY_PAID
+PAID
+OVERDUE
+4.5.3 Material Receipt Lifecycle
+
+We separated Purchase and Material Receipt, so now the receipt itself needs a lifecycle.
+
+Example:
+
+Purchase P001
+       │
+       ├── Receipt R001 → 100 kg
+       └── Receipt R002 → 80 kg
+Receipt lifecycle
+EXPECTED
+   ↓
+RECEIVED
+   ↓
+PARTIALLY_RETURNED
+   ↓
+CLOSED
+
+Or:
+
+RECEIVED
+   ↓
+FULLY_RETURNED
+Why this matters
+
+Suppose:
+
+100 kg received
+1 kg already used
+99 kg returned due to quality issue
+
+The system should be able to represent:
+
+Received       = 100 kg
+Consumed       = 1 kg
+Returned       = 99 kg
+
+rather than simply changing the original receipt to 0 kg.
+
+That preserves traceability.
+
+4.5.4 Customer Order Lifecycle
+
+This is one of the most important lifecycles.
+
+A customer order could go:
+
+PLACED
+   ↓
+CONFIRMED
+   ↓
+IN_PROGRESS
+   ↓
+READY
+   ↓
+DELIVERED
+   ↓
+COMPLETED
+Cancellation
+
+An order can potentially be cancelled before completion:
+
+PLACED ─────→ CANCELLED
+CONFIRMED ──→ CANCELLED
+IN_PROGRESS → CANCELLED
+
+But cancellation rules need to depend on how much material/production has already been committed.
+
+For example:
+
+Customer orders 100 kg warp.
+
+If nothing has been produced:
+
+cancellation is easy.
+
+If 80 kg has already been produced specifically for the order:
+
+cancellation becomes a business/financial adjustment.
+
+So later, 4.6 Business Invariants will define what is allowed.
+
+4.5.5 Production Batch Lifecycle
+
+For in-house production:
+
+PLANNED
+   ↓
+IN_PROGRESS
+   ↓
+COMPLETED
+
+Possible cancellation:
+
+PLANNED → CANCELLED
+IN_PROGRESS → CANCELLED
+
+But completed production should generally not simply be deleted or changed.
+
+Example:
+
+Raw silk supplied = 100 kg
+Finished warp = 96 kg
+Wastage = 4 kg
+
+Once completed, the system records the production result.
+
+Important
+
+COMPLETED does not mean:
+
+“Everything was perfect.”
+
+It means:
+
+“This production activity has been completed and its material result has been recorded.”
+
+4.5.6 Outsourcing Job Lifecycle
+
+For outsourced warp:
+
+CREATED
+   ↓
+SENT_TO_MANUFACTURER
+   ↓
+IN_PROGRESS
+   ↓
+PARTIALLY_RECEIVED
+   ↓
+FULLY_RECEIVED
+   ↓
+CLOSED
+
+Possible return/adjustment can occur after receipt.
+
+Example:
+
+Raw silk sent = 200 kg
+
+Received:
+150 kg → first receipt
+ 45 kg → second receipt
+
+Difference = 5 kg
+
+The system should preserve those movements.
+
+Financial status is separate
+Job Status:
+FULLY_RECEIVED
+
+Payment Status:
+UNPAID
+
+Later:
+
+Payment Status:
+PAID
+4.5.7 Payment Lifecycle
+
+Payments are particularly important because of cheques and corrections.
+
+Basic lifecycle:
+
+RECORDED
+    ↓
+COMPLETED
+
+For cheque payments:
+
+RECORDED
+    ↓
+PENDING_CLEARANCE
+    ↓
+COMPLETED
+
+If the cheque fails:
+
+PENDING_CLEARANCE
+    ↓
+FAILED / BOUNCED
+
+And if a completed transaction needs correction:
+
+COMPLETED
+    ↓
+REVERSED
+Important rule
+
+A completed payment should not be silently edited or deleted.
+
+Instead:
+
+Original Payment
+      ↓
+Reversal / Correction
+      ↓
+Corrected Payment
+
+This gives us auditability.
+
+4.5.8 Financial Transaction Lifecycle
+
+A financial transaction represents actual money movement.
+
+For example:
+
+Customer pays ₹50,000
+        ↓
+Financial Transaction
+        ↓
+Bank account +₹50,000
+
+Basic:
+
+PENDING
+   ↓
+CLEARED / COMPLETED
+
+For bank/cheque transactions:
+
+PENDING
+   ↓
+CLEARED
+
+or:
+
+PENDING
+   ↓
+FAILED
+
+Correction:
+
+COMPLETED
+   ↓
+REVERSED
+Why this is critical
+
+The dashboard should calculate available money from valid completed/cleared transactions.
+
+A pending cheque shouldn't suddenly increase available bank balance.
+
+4.5.9 Worker Work Record Lifecycle
+
+A work record represents:
+
+“This worker performed this work.”
+
+Example:
+
+Worker:
+Ravi
+
+Work:
+Rolling
+
+Hours:
+8
+
+Rate:
+₹100/hour
+
+Earnings:
+₹800
+
+Lifecycle:
+
+RECORDED
+   ↓
+VERIFIED
+   ↓
+PAYABLE
+   ↓
+PAID
+
+However, we don't necessarily need all four states in the MVP.
+
+A simpler model can be:
+
+RECORDED
+   ↓
+PAID
+
+The important distinction is:
+
+Work Record ≠ Worker Payment
+
+A worker may have:
+
+Week 1 work = ₹3,000
+Week 2 work = ₹2,500
+Week 3 work = ₹3,200
+
+and one weekly payment can settle the relevant records.
+
+4.5.10 Expense Lifecycle
+
+Expenses are simpler:
+
+RECORDED
+   ↓
+PAID
+
+But if we support planned expenses later:
+
+PLANNED
+   ↓
+RECORDED
+   ↓
+PAID
+
+For MVP, we probably don't need PLANNED.
+
+The important rule is:
+
+An expense should only affect actual cash/bank balance when its corresponding financial transaction occurs.
+
+4.5.11 Loan Lifecycle
+
+Loan:
+
+ACTIVE
+   ↓
+PARTIALLY_REPAID
+   ↓
+COMPLETED
+
+Example:
+
+Original Principal = ₹5,00,000
+
+Current Principal:
+₹5,00,000
+      ↓
+₹4,00,000
+      ↓
+₹2,00,000
+      ↓
+₹0
+
+When principal becomes zero:
+
+COMPLETED
+
+But interest payments remain separate.
+
+Example:
+
+Loan
+ │
+ ├── Principal repayment
+ ├── Interest payment
+ ├── Principal repayment
+ └── Interest payment
+
+This will become important for financial reporting.
+
+4.5.12 Chit Lifecycle
+
+A chit can have:
+
+ACTIVE
+   ↓
+PAYOUT_RECEIVED
+   ↓
+CONTRIBUTION_CONTINUING
+   ↓
+COMPLETED
+
+But depending on the actual business process, we may simplify this.
+
+Conceptually:
+
+ACTIVE
+   ↓
+PAYOUT_RECEIVED
+   ↓
+COMPLETED
+
+while individual monthly contributions are tracked separately.
+
+The important thing is that:
+
+Chit status should not replace the chit transaction history.
+
+The history remains the source of truth.
+
+4.5.13 Bill / Invoice Lifecycle
+
+Bills require history preservation.
+
+Recommended:
+
+DRAFT
+   ↓
+ISSUED
+   ↓
+COMPLETED
+
+If correction is required:
+
+ISSUED
+   ↓
+CORRECTED
+
+or:
+
+ISSUED
+   ↓
+CANCELLED
+
+The original document should remain available.
+
+Example
+
+Bill:
+
+INV-102
+₹85,000
+
+Mistake found.
+
+Don't:
+
+INV-102 → edit silently → ₹80,000
+
+Instead:
+
+INV-102 → CORRECTED
+
+New version:
+INV-102-R1 → ₹80,000
+
+The exact numbering/version strategy can be finalized later.
+
+4.5.14 Refund Lifecycle
+
+Refund:
+
+REQUESTED
+   ↓
+APPROVED
+   ↓
+SETTLED
+
+or:
+
+REQUESTED
+   ↓
+REJECTED
+
+But since this is an owner-controlled MVP, we can simplify to:
+
+RECORDED
+   ↓
+SETTLED
+
+The important part is that a refund should create the appropriate financial/material adjustment rather than simply modifying the original sale.
+
+4.5.15 Notification Lifecycle
+
+Notifications are slightly different.
+
+Example:
+
+Supplier payment due in 3 days.
+
+Lifecycle:
+
+PENDING
+   ↓
+SENT
+   ↓
+READ
+
+But if the underlying issue is unresolved:
+
+PENDING
+   ↓
+SENT
+   ↓
+UNRESOLVED
+   ↓
+REMINDER
+
+Eventually:
+
+UNRESOLVED
+   ↓
+RESOLVED
+
+Example:
+
+Supplier payment due
+       ↓
+Notification sent
+       ↓
+Supplier paid
+       ↓
+Notification resolved
+
+This prevents unnecessary repeated alerts after the issue is already settled.
+
+4.5.16 Customer / Supplier Lifecycle
+
+These are relatively simple master entities.
+
+Customer
+ACTIVE
+   ↓
+INACTIVE
+
+We should not delete customers if historical orders/payments exist.
+
+Same for suppliers:
+
+ACTIVE
+   ↓
+INACTIVE
+
+An inactive supplier can still appear in historical purchases.
+
+4.5.17 Financial Account Lifecycle
+
+For cash/bank accounts:
+
+ACTIVE
+   ↓
+CLOSED
+
+Example:
+
+Bank Account A
+    ↓
+CLOSED
+
+Historical transactions remain.
+
+Again:
+
+Closed does not mean deleted.
+
+4.5.18 Summary of Important Lifecycles
+Entity	Main lifecycle
+Purchase	Ordered → Partially Received → Fully Received → Closed
+Material Receipt	Expected → Received → Returned/Closed
+Customer Order	Placed → Confirmed → In Progress → Ready → Delivered → Completed
+Production Batch	Planned → In Progress → Completed
+Outsourcing Job	Created → Sent → In Progress → Received → Closed
+Payment	Recorded → Pending/Cleared → Completed → Reversed
+Financial Transaction	Pending → Cleared/Completed → Reversed
+Work Record	Recorded → Paid
+Expense	Recorded → Paid
+Loan	Active → Partially Repaid → Completed
+Chit	Active → Payout → Completed
+Bill	Draft → Issued → Corrected/Cancelled
+Refund	Recorded → Settled
+Notification	Pending → Sent → Resolved
+Customer	Active → Inactive
+Supplier	Active → Inactive
+Financial Account	Active → Closed

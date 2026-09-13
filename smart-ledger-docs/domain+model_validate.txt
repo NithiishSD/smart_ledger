@@ -1,0 +1,1051 @@
+Step 4.10 — Validate the Domain Model Against Requirements
+
+Now we verify whether the domain model we created actually supports the real SmartSilk business.
+
+The purpose is to catch:
+
+Missing entities
+Wrong relationships
+Missing edge cases
+Duplicate responsibilities
+Financial inconsistencies
+Features that cannot be represented correctly
+Overcomplicated entities that are unnecessary
+
+We will validate module by module.
+
+4.10.1 Validation Method
+
+For every major requirement, ask:
+
+Which entity represents this requirement?
+Which entity owns the business rule?
+What happens when the action occurs?
+Does inventory change correctly?
+Does money change correctly?
+Can the system preserve history?
+Can the dashboard derive the required information?
+Can edge cases be represented?
+
+We should not ask only:
+
+“Do we have an entity for this?”
+
+We should ask:
+
+“Can the complete business operation be represented without ambiguity?”
+
+4.10.2 Supplier and Purchase Validation
+Requirement
+
+SmartSilk must support:
+
+Purchasing raw silk from suppliers
+Cash purchases
+Credit purchases
+Different credit periods
+Partial delivery
+Full delivery
+Damaged material returns
+Poor-quality material returns
+Supplier outstanding
+Supplier payments
+Historical purchase price
+Current model
+
+We have:
+
+Supplier
+Purchase
+Material Receipt
+Material Return concept
+Payment
+Financial Transaction
+
+This is mostly sufficient.
+
+Example
+
+Purchase:
+
+Purchase P001
+Supplier: Supplier A
+Ordered quantity: 180 kg
+Rate: ₹950/kg
+Payment: Credit
+Credit period: 30 days
+
+Receipt:
+
+Receipt R001
+Received: 100 kg
+Date: Day 1
+
+Second receipt:
+
+Receipt R002
+Received: 80 kg
+Date: Day 5
+
+This correctly supports partial delivery.
+
+Identified gap: Material Receipt must be explicit
+
+We should not directly update inventory when a Purchase is created.
+
+Correct flow:
+
+Purchase Created
+        ↓
+Material Receipt Recorded
+        ↓
+Inventory Increases
+        ↓
+Purchase Received Quantity Updated
+
+Therefore:
+
+Material Receipt must be a proper domain entity/concept.
+
+It should preserve:
+
+Receipt ID
+Purchase reference
+Received date
+Received quantity
+Accepted quantity
+Returned quantity
+Condition
+Notes
+Return validation
+
+Example:
+
+Received: 100 kg
+Used: 1 kg
+Remaining: 99 kg
+Returned: 99 kg
+
+The system must not delete the original receipt.
+
+Correct representation:
+
+Receipt = 100 kg
+Material consumed = 1 kg
+Material returned = 99 kg
+
+This preserves traceability.
+
+Validation result
+
+Supplier and purchase module is valid after explicitly adding:
+
+Material Receipt
+Material Return / Return Movement
+4.10.3 Inventory Validation
+Requirement
+
+The system must track:
+
+Available raw silk
+Raw silk used for direct sales
+Raw silk used in production
+Raw silk sent to manufacturers
+Returned raw silk
+Wastage
+Finished warp
+External WIP
+Internal WIP
+Remaining material
+
+Initially, we considered Raw Material Lot.
+
+But after understanding the business, a lot-based inventory model may be unnecessarily restrictive.
+
+The actual requirement is not necessarily:
+
+“Track every individual silk lot.”
+
+The actual requirement is:
+
+“Track every physical movement of material.”
+
+Therefore, we need a stronger concept:
+
+Material Movement
+
+This is one of the most important missing domain concepts.
+
+A Material Movement records any quantity entering, leaving, or changing location/state.
+
+Examples:
+
+Purchase Receipt       +100 kg Raw Silk
+Direct Sale             -20 kg Raw Silk
+Production Consumption  -30 kg Raw Silk
+Material Return         -10 kg Raw Silk
+Wastage                  -2 kg Raw Silk
+Outsourcing Issue       -25 kg Raw Silk
+Production Output       +28 kg Finished Warp
+Suggested Material Movement types
+RECEIPT
+RETURN_FROM_SUPPLIER
+DIRECT_SALE
+PRODUCTION_CONSUMPTION
+PRODUCTION_OUTPUT
+OUTSOURCING_ISSUE
+OUTSOURCING_RECEIPT
+WASTAGE
+ADJUSTMENT
+TRANSFER
+CUSTOMER_RETURN
+
+The movement should contain:
+
+Movement ID
+Date
+Product/material type
+Quantity
+Direction
+Source reference
+Destination/reference
+Reason
+Related business operation
+Why this is necessary
+
+Without Material Movement, inventory might be updated by different modules independently:
+
+Purchase updates inventory
+Production updates inventory
+Outsourcing updates inventory
+Sales updates inventory
+
+This can cause inconsistent balances.
+
+Instead:
+
+Every material-changing operation creates a Material Movement
+
+Then inventory is derived from movements.
+
+Example
+Total received = 500 kg
+Directly sold = 100 kg
+Production used = 150 kg
+Outsourced = 100 kg
+Wastage = 10 kg
+
+Available raw silk = 140 kg
+
+This calculation becomes reliable.
+
+Inventory validation result
+
+We should add:
+
+Material Movement / Inventory Transaction
+
+We should not necessarily create a manually editable InventoryBalance entity.
+
+Inventory balance should be derived from movements, with optional cached summaries later.
+
+4.10.4 Customer Order Validation
+Requirements
+
+Orders must support:
+
+Customer
+Product type
+Required weight
+Warp specification
+Customer-specific price
+Advance payment
+Partial payment
+Production status
+Delivery status
+Order completion
+Order cancellation restrictions
+Multiple payments
+Customer outstanding
+
+Current model:
+
+Customer
+Customer Order
+Payment
+Financial Transaction
+Production Batch
+Outsourcing Job
+Bill
+
+Mostly valid.
+
+Identified gap: Order Line or Order Item
+
+We need to decide whether one order can contain multiple products.
+
+For example:
+
+Order O001
+Customer: Kumar
+
+20 kg Kora Warp
+15 kg Silk Warp
+10 kg Vuda Warp
+
+If this is possible, a single productType and weight inside Customer Order is insufficient.
+
+We would need:
+
+Customer Order
+    └── Order Item
+          ├── Product Type
+          ├── Quantity
+          ├── Rate
+          ├── Warp Specification
+          └── Amount
+Decision
+
+If every customer order always contains exactly one product type, then the current design is sufficient.
+
+But if a customer can request multiple warp types or different specifications in one order, we need:
+
+Order Item / Order Line
+
+For production-grade flexibility, it is safer to model:
+
+Customer Order 1:N Order Item
+
+Even if the MVP UI initially creates only one item per order.
+
+4.10.5 Payment Validation
+Requirements
+One customer can make multiple payments
+One order can receive multiple payments
+One payment can settle multiple orders
+Payments may be advance payments
+Excess payment must not become revenue automatically
+Payments can be cash, UPI, bank transfer, cheque
+Payment history must be preserved
+
+Current model:
+
+Payment
+Financial Transaction
+
+But there is a missing concept.
+
+Payment Allocation
+
+Example:
+
+Customer pays ₹50,000
+
+That payment may settle:
+
+Order O001 → ₹30,000
+Order O002 → ₹20,000
+
+Therefore, Payment and Order are many-to-many.
+
+We need:
+
+Payment
+    └── Payment Allocation
+          ├── Order
+          └── Allocated Amount
+
+A payment allocation should contain:
+
+Allocation ID
+Payment reference
+Order reference
+Allocated amount
+Allocation date
+Allocation type
+
+Possible allocation types:
+
+ORDER_SETTLEMENT
+ADVANCE
+REFUND_ADJUSTMENT
+OTHER_ADJUSTMENT
+Why Payment Allocation is essential
+
+Without it, we cannot reliably answer:
+
+Which order has been paid?
+How much of this payment belongs to each order?
+Is this payment an advance?
+Which orders remain outstanding?
+Can one payment settle multiple invoices?
+
+Therefore:
+
+Payment Allocation must be added to the domain model.
+
+4.10.6 Production Validation
+Requirements
+
+Production must support:
+
+In-house production
+Raw silk consumption
+WIP
+Finished warp
+Wastage
+Worker work records
+Production completion
+Order linkage
+Multiple orders fulfilled by one production batch
+One order fulfilled by multiple batches
+
+Current model:
+
+Production Batch
+Work Record
+Worker
+Material Movement
+Customer Order
+
+This is mostly valid.
+
+Identified gap: Production Material Consumption
+
+A production batch may consume material from multiple sources.
+
+Example:
+
+Production Batch PB001
+Consumes:
+- 20 kg from receipt R001
+- 15 kg from receipt R002
+- 10 kg from another available stock
+
+Therefore, simply storing:
+
+ProductionBatch.inputWeight = 45 kg
+
+is not enough for traceability.
+
+We need a concept such as:
+
+Production Material Consumption
+
+It records:
+
+Production batch
+Material movement/source
+Quantity consumed
+Date
+
+However, for MVP, this may be represented through Material Movement references rather than a separate large entity.
+
+Recommended model
+
+Use:
+
+Production Batch
+    └── Material Movement: PRODUCTION_CONSUMPTION
+
+Create a separate ProductionMaterialConsumption entity only if detailed source allocation is required.
+
+Production output validation
+
+Example:
+
+Input: 100 kg
+Finished warp: 94 kg
+Wastage: 4 kg
+Unexplained difference: 2 kg
+
+The system should not silently accept this unless discrepancy is explicitly recorded.
+
+Rule:
+
+Input = Finished Output + Wastage + Recorded Discrepancy
+
+This ensures production accountability.
+
+4.10.7 Outsourcing Validation
+Requirements
+Raw silk sent to manufacturer
+Manufacturer receives raw silk
+External WIP must be visible
+Warp received later
+Wastage/difference manually recorded
+Manufacturer payable
+Same manufacturer can handle different warp types
+Outsourcing can happen before customer order
+Vuda warp is not manufactured internally
+
+Current model:
+
+Manufacturer
+Outsourcing Job
+Material Movement
+Payment
+Customer Order
+
+Valid.
+
+Important validation
+
+An outsourcing job must not directly mean:
+
+Raw silk immediately becomes finished warp
+
+Correct states:
+
+Created
+   ↓
+Material Sent
+   ↓
+External WIP
+   ↓
+Partially Received
+   ↓
+Fully Received
+   ↓
+Manufacturer Payment
+   ↓
+Closed
+Required quantities
+
+Outsourcing Job should distinguish:
+
+Quantity sent
+Quantity received
+Quantity returned unused
+Wastage
+Difference/discrepancy
+Finished output
+
+Example:
+
+Sent: 100 kg raw silk
+Received: 94 kg warp
+Wastage: 3 kg
+Unexplained difference: 3 kg
+
+This should not be merged into one generic weight field.
+
+Validation result
+
+Outsourcing model is valid if:
+
+Material sent creates an outgoing movement
+Received warp creates an incoming finished-product movement
+External WIP is derived from sent minus received/returned/closed quantities
+Manufacturer payable is separately tracked
+4.10.8 Worker and Work Payment Validation
+Requirements
+Rolling workers paid hourly
+Warping workers paid by kg/rate
+Historical rate must remain unchanged
+Work may be recorded first and paid later
+One payment may settle multiple work records
+
+Current model:
+
+Worker
+Work Record
+Payment
+Financial Transaction
+
+Mostly valid.
+
+Identified gap: Work Payment Allocation
+
+Example:
+
+Worker A has:
+Work Record 1 → ₹2,000
+Work Record 2 → ₹3,000
+Work Record 3 → ₹1,500
+
+A payment of ₹4,000 may settle part of these records.
+
+Therefore, if detailed worker outstanding is required, we need:
+
+Worker Payment Allocation
+
+Alternatively, the generic Payment Allocation model can be extended to support:
+
+Payment Allocation
+    ├── Order
+    ├── Purchase
+    ├── Work Record
+    ├── Outsourcing Job
+    └── Other obligation
+
+For cleaner domain design, a generic allocation mechanism may become complicated.
+
+Recommendation
+
+For MVP:
+
+Work Record stores earnings and payment status.
+Worker Payment records can settle multiple work records.
+Detailed allocation can be introduced if required.
+
+But the domain should not assume:
+
+Work recorded = Worker paid
+
+These are separate events.
+
+4.10.9 Finance Validation
+Requirements
+
+Finance must track:
+
+Cash
+Each bank account separately
+UPI/bank transactions
+Cheques
+Expenses
+Supplier payments
+Customer receipts
+Worker payments
+Loans
+Chits
+Personal drawings
+Internal transfers
+Refunds
+Actual payment dates
+Business reason
+Historical records
+
+Current model:
+
+Financial Account
+Financial Transaction
+Payment
+Expense
+Loan
+Chit
+Refund
+
+This is valid conceptually.
+
+Critical validation: Financial Transaction is not the same as Payment
+
+Example:
+
+Customer payment
+
+Business meaning:
+
+Customer paid for Order O001
+
+Financial meaning:
+
+₹20,000 entered Bank Account 1
+
+These are related but different.
+
+Similarly:
+
+Supplier payment
+
+Business meaning:
+
+Supplier payable reduced by ₹30,000
+
+Financial meaning:
+
+₹30,000 left Cash Account
+
+Therefore:
+
+Payment → Financial Transaction
+
+But not every Financial Transaction is a Payment.
+
+Examples of financial transactions without normal payment:
+
+Bank-to-bank transfer
+Cash withdrawal
+Loan received
+Personal drawing
+Chit contribution
+Internal account transfer
+
+This separation is correct and must remain.
+
+4.10.10 Loan Validation
+Requirements
+Loan received
+Loan principal outstanding
+Principal repayment
+Interest payment
+Loan completion
+Loan may be from bank or private lender
+Month-end loan-related payments must be classified correctly
+
+Current model:
+
+Loan
+Financial Transaction
+
+Valid, but the system must distinguish:
+
+Loan Principal
+Loan Interest
+Example
+
+Loan received:
+
+Cash increases ₹1,00,000
+Loan liability increases ₹1,00,000
+
+Principal repayment:
+
+Cash decreases ₹10,000
+Loan liability decreases ₹10,000
+
+Interest payment:
+
+Cash decreases ₹2,000
+Interest expense increases ₹2,000
+Loan liability does not decrease by ₹2,000
+
+This distinction must be enforced as a business rule.
+
+4.10.11 Chit Validation
+Requirements
+Chit contribution
+Chit payout
+Cash-only transactions
+Contribution history
+Payout history
+Remaining contributions
+Bidding details
+Chit completion
+
+Current model:
+
+Chit
+Financial Transaction
+
+Valid if Chit transactions are restricted to physical cash.
+
+Important rule:
+
+Chit contribution ≠ business expense
+Chit payout ≠ business revenue
+
+A chit is treated as an investment/financial commitment.
+
+4.10.12 Expense Validation
+Requirements
+Expense categories
+Actual payment date
+Monthly or one-time classification
+Cash/bank payment
+Refunds
+Business vs personal classification
+Expense reports
+P&L analysis
+
+Current model:
+
+Expense
+Financial Transaction
+Financial Account
+
+Valid.
+
+But we need to ensure:
+
+Expense recorded
+
+and
+
+Expense paid
+
+can be different if needed.
+
+For MVP, most expenses may be recorded only when paid.
+
+However, if unpaid expenses are later required, the model should support:
+
+RECORDED
+UNPAID
+PAID
+Personal money validation
+
+The business currently mixes personal and business money.
+
+SmartSilk should not pretend the money is automatically business expense.
+
+Instead, classify it as:
+
+PERSONAL_DRAWING
+
+This allows analysis without changing actual business behavior.
+
+Example:
+
+₹15,000 withdrawn for personal use
+
+This should reduce cash but should not automatically reduce operating profit.
+
+4.10.13 Bills and Documents Validation
+Requirements
+Sales bills
+Purchase bills
+GST bills
+Bank statements
+Supporting documents
+Bills may be generated after full payment
+Bills may be generated before payment in special cases
+Corrections/versioning
+
+Current model:
+
+Bill / Invoice
+Document reference
+
+Valid.
+
+Important rule:
+
+Bill ≠ Payment
+
+A bill represents a business document or obligation.
+
+Payment represents settlement of money.
+
+A bill may exist:
+
+Before payment
+After payment
+Without immediate payment
+With partial payment
+4.10.14 Notification Validation
+Requirements
+Supplier due reminders
+Day-8 and Day-10 reminders
+Customer outstanding reminders
+Loan/chit reminders
+Configurable reminder timing
+Notification history
+Resolved notifications
+
+Current model:
+
+Notification
+Notification Configuration
+
+Valid.
+
+Notifications must be derived from actual conditions.
+
+Example:
+
+Supplier due date approaching
+        ↓
+Notification generated
+
+Not:
+
+User manually changes supplier outstanding
+        ↓
+Notification generated
+
+Notifications should never become the source of financial truth.
+
+4.10.15 Dashboard Validation
+Requirements
+
+Dashboard should show:
+
+Available cash
+Bank balances
+Customer outstanding
+Supplier outstanding
+Raw silk available
+Raw silk outside with manufacturers
+WIP
+Pending customer orders
+Pending supplier payments
+Worker payable
+Loan liability
+Chit commitments
+Current commitments
+Profit/loss reports eventually
+
+The dashboard does not need independent business entities for every metric.
+
+Instead, it should read from:
+
+Financial Transactions
+Payments
+Orders
+Purchases
+Material Movements
+Production
+Outsourcing
+Loans
+Chits
+Expenses
+Important rule
+
+Do not create editable entities such as:
+
+CustomerOutstanding
+SupplierOutstanding
+CurrentCashBalance
+AvailableInventory
+TotalProfit
+
+These are derived values.
+
+4.10.16 Missing Concepts Identified During Validation
+
+After validating all modules, the following concepts must be explicitly added or clarified.
+
+Definitely add
+1. Material Receipt
+
+Because purchases may be partially received.
+
+2. Material Movement
+
+Because all inventory changes must be traceable.
+
+3. Payment Allocation
+
+Because one payment can settle multiple obligations and one obligation can have multiple payments.
+
+4. Order Item / Order Line
+
+Add if a customer order can contain multiple product types/specifications.
+
+Important concepts that may be represented through existing movements
+5. Material Return
+
+Can be represented as a Material Movement with type:
+
+RETURN
+
+A separate entity is optional.
+
+6. Production Consumption
+
+Can be represented as Material Movement:
+
+PRODUCTION_CONSUMPTION
+
+A separate entity is optional.
+
+7. Outsourcing Issue and Receipt
+
+Can be represented through Material Movements linked to Outsourcing Job.
+
+8. Worker Payment Allocation
+
+Can initially be simplified through work-record payment status, but detailed allocation may be needed later.
+
+4.10.17 Final Validation Result
+Domain model is valid in principle, but needs these corrections
+Core entities/concepts
+Customer
+Supplier
+Purchase
+Material Receipt
+Material Movement
+Customer Order
+Order Item
+Production Batch
+Outsourcing Job
+Manufacturer
+Worker
+Work Record
+Payment
+Payment Allocation
+Financial Transaction
+Financial Account
+Expense
+Refund
+Loan
+Chit
+Bill/Invoice
+Notification
+Value Objects
+Money
+Weight
+Credit Period
+Due Date
+Contact Information
+Address
+Warp Specification
+Date/DateTime
+Derived information
+Customer Outstanding
+Supplier Outstanding
+Cash Balance
+Bank Balance
+Raw Material Stock
+Finished Stock
+External WIP
+Internal WIP
+Profit/Loss
+Pending Commitments
+
+These must be calculated from source records.
+
+4.10.18 Most Important Architectural Conclusion
+
+The domain model should be based on three connected but separate flows.
+
+Material Flow
+Purchase
+   ↓
+Material Receipt
+   ↓
+Material Movement
+   ↓
+Direct Sale / Production / Outsourcing
+   ↓
+Finished Product
+   ↓
+Customer Delivery
+Business Obligation Flow
+Customer Order
+Supplier Purchase
+Production Work
+Outsourcing Job
+Loan
+Chit
+Expense
+
+These represent what the business owes, receives, produces, or commits to.
+
+Financial Flow
+Payment / Expense / Loan / Chit / Transfer
+                ↓
+       Financial Transaction
+                ↓
+       Cash or Bank Account
+
+The three flows must be linked, but must not be merged into one giant transaction entity.
+
+Step 4.10 Conclusion
+
+The model passes validation after adding or confirming:
+
+Material Receipt
+Material Movement
+Payment Allocation
+Possibly Order Item
+Clear distinction between business obligations and financial movements
+Derived balances instead of manually maintained balances
+Explicit handling of partial delivery, returns, wastage, WIP, and advances
+
+The most important lesson is:
+
+A domain model is correct only when it can represent both the normal business flow and the unusual real-world cases without corrupting history or financial calculations.
+

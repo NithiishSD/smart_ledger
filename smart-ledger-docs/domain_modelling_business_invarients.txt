@@ -1,0 +1,299 @@
+Step 4.6 — Define Domain Invariants & Business Rules
+
+A domain invariant is a rule that must always remain true in SmartSilk.
+
+For example:
+
+A chit payment can only be recorded as physical cash.
+
+This isn't just a UI preference—it is a business rule.
+
+4.6.1 Purchase & Raw Material Rules
+Rule 1 — Raw silk is weight-based
+
+SmartSilk's raw-silk inventory is measured primarily in:
+
+kg
+
+Length, thread count, dimensions, etc. are outside the current scope.
+
+Rule 2 — Purchase price is manually determined
+
+The owner enters:
+
+Total purchase amount
+Total weight
+Price per kg
+
+The system can calculate:
+
+Price per kg = Total amount / Total weight
+
+Rule 3 — Purchase price is historical
+
+The system must preserve the actual purchase price of each purchase.
+
+It must not recalculate old purchases using today's silk price.
+
+Rule 4 — Purchase receipt can be partial
+
+Although normally an entire purchased package/bundle arrives together, SmartSilk must allow a purchase to have:
+
+Ordered
+Partially received
+Fully received
+
+This handles exceptional supplier delays.
+
+Rule 5 — Damaged material
+
+If the entire received package is damaged:
+
+The whole package can be returned.
+
+If only some material is found to be poor quality after some quantity has already been consumed, the consumed quantity remains accounted for and the remaining material can be returned.
+
+Example:
+
+Received: 60 kg
+Used:      1 kg
+Remaining: 59 kg
+           ↓
+Quality problem
+           ↓
+Return 59 kg
+4.6.2 Inventory Rules
+Rule 6 — Inventory changes only through recorded events
+
+Raw silk should not simply be manually edited from:
+
+100 kg → 80 kg
+
+without a reason.
+
+The reduction should originate from an event such as:
+
+Sale
+Production consumption
+Outsourcing issue
+Return
+Wastage
+Adjustment
+Rule 7 — Wastage is explicitly recorded
+
+When the owner identifies wastage, it is recorded explicitly as:
+
+Wastage
+
+The system must distinguish wastage from WIP and available material.
+
+Rule 8 — Negative inventory should not normally occur
+
+SmartSilk should prevent the system from showing physically impossible stock such as:
+
+Available raw silk = -15 kg
+
+unless an explicitly authorized adjustment mechanism is introduced.
+
+4.6.3 Customer Order Rules
+Rule 9 — Orders are weight-based
+
+For the current system, the important quantity for warp is:
+
+Weight in kg
+
+Detailed warp specifications such as length, width, thread count, etc. are intentionally left outside the current domain model.
+
+Rule 10 — Price is manually determined
+
+The owner enters the selling amount and applicable price/kg.
+
+The system records the actual agreed price rather than attempting to predict it.
+
+Rule 11 — Order cannot be freely modified after production begins
+
+Before production, an order may be changed according to business requirements.
+
+Once production has started:
+
+The order cannot simply be modified/cancelled.
+
+The existing commitment must be respected.
+
+Rule 12 — No partial product delivery
+
+For the current business process, a customer buying multiple warp types cannot receive arbitrary partial quantities of a single warp requirement.
+
+The order is handled according to the agreed warp units/types.
+
+4.6.4 Customer Payment Rules
+Rule 13 — Payment reduces customer outstanding
+
+A customer payment must affect the customer's outstanding balance.
+
+Rule 14 — Oldest-first allocation
+
+Unless a future explicit override is introduced:
+
+Customer payments are allocated to the oldest outstanding order first.
+
+Rule 15 — One payment can settle multiple orders
+
+If the payment exceeds one order's outstanding amount, the remainder continues to the next oldest order.
+
+Rule 16 — Excess payment
+
+There should be no uncontrolled excess amount.
+
+Any genuine excess must be handled according to the business process, such as:
+
+Advance for another order
+Outstanding adjustment
+Refund
+4.6.5 Supplier Payment Rules
+Rule 17 — Supplier credit period is supplier-specific
+
+Each supplier can have their own credit period.
+
+Rule 18 — Supplier payment is oldest-first
+
+Supplier payments settle the oldest outstanding supplier obligation first.
+
+Rule 19 — Supplier overdue rules are configurable
+
+Any applicable overdue/penalty behaviour must not be hard-coded globally.
+
+4.6.6 Production Rules
+Rule 20 — Production consumes material
+
+When raw silk is used for production, available raw silk must decrease and the corresponding WIP must increase.
+
+Available Raw Silk
+       ↓
+Production Consumption
+       ↓
+WIP
+Rule 21 — Completed production becomes finished inventory
+WIP
+ ↓
+Production completed
+ ↓
+Finished Warp
+Rule 22 — Production weight is the primary measurement
+
+Production and costing primarily use:
+
+kg
+
+4.6.7 Outsourcing Rules
+Rule 23 — Outsourced material is tracked separately
+
+When raw silk is given to an external manufacturer:
+
+Available Raw Silk
+        ↓
+Outsourced WIP
+
+It should not remain counted as freely available stock.
+
+Rule 24 — Returned warp is recorded by weight
+Raw silk issued
+       ↓
+Warp returned
+       ↓
+Weight recorded
+Rule 25 — Vuda warp is direct trading
+
+Vuda warp does not go through the production/outsourcing flow.
+
+Purchase
+   ↓
+Inventory
+   ↓
+Sale
+4.6.8 Financial Rules
+Rule 26 — Every money movement has a classification
+
+Money must have a business meaning such as:
+
+Customer payment
+Supplier payment
+Worker payment
+Expense
+Loan
+Chit
+Refund
+Personal drawing
+Other appropriate transaction
+Rule 27 — Loan principal is not an expense
+Loan received → Liability
+Principal repayment → Liability reduction
+Interest → Expense
+Rule 28 — Chit is an investment
+
+Chit contributions and lump-sum receipts are tracked separately from normal sales revenue.
+
+The chit lump-sum receipt is treated as profit/investment return according to the business rule you specified, with the chit calculation handled separately.
+
+Rule 29 — Chit payments are cash-only
+
+For chit transactions:
+
+Only physical cash is permitted.
+
+No UPI, bank transfer, or cheque.
+
+4.6.9 Cash & Bank Rules
+
+SmartSilk must maintain separate balances for:
+
+Physical Cash
+Bank Account A
+Bank Account B
+Bank Account C
+...
+
+and also provide:
+
+Total available money
+= Physical Cash + Bank balances
+
+But the individual balances must remain visible.
+
+Rule 30 — Physical cash is real inventory of money
+
+Cash withdrawn from a bank increases physical cash.
+
+Bank ↓
+Cash ↑
+
+Cash used for an expense/payment:
+
+Cash ↓
+
+The system must therefore allow the owner to understand where physical cash currently came from and where it went.
+
+4.6.10 Financial Analysis Rules
+Rule 31 — Revenue ≠ every incoming transaction
+
+For example:
+
+Customer sale → Revenue
+Loan → Not revenue
+Bank transfer between own accounts → Not revenue
+Rule 32 — Personal drawings are separated for analysis
+
+Money taken for personal use should not distort the calculated business profitability.
+
+Rule 33 — Profitability is derived from recorded transactions
+
+The system should eventually calculate:
+
+Monthly profit/loss
+Yearly profit/loss
+Current expenses
+In-house production profitability
+Outsourcing profitability
+Direct trading profitability
+
+rather than relying on manual estimates.

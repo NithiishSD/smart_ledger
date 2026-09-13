@@ -1,0 +1,928 @@
+Step 8.7 — DTOs, Validation & Exception Handling
+
+Now we move from “what APIs exist?” to “how should Spring Boot implement those APIs cleanly?”
+
+The goal is to prevent your backend from becoming:
+
+Controller
+   ↓
+Huge Service
+   ↓
+JPA Entity
+   ↓
+Database
+
+Instead, we want:
+
+HTTP Request
+     ↓
+Request DTO
+     ↓
+Controller
+     ↓
+Application Service
+     ↓
+Domain Rules
+     ↓
+Repository
+     ↓
+Database
+     ↓
+Response DTO
+     ↓
+HTTP Response
+8.7.1 Why DTOs?
+
+DTO = Data Transfer Object.
+
+A DTO is the data structure used to communicate through your API.
+
+You should not expose JPA entities directly.
+
+For example, suppose your Purchase entity contains:
+
+Purchase
+├── id
+├── supplier
+├── orderedWeight
+├── rate
+├── receipts
+├── createdBy
+├── version
+└── internal fields
+
+You don't want your API automatically exposing all of that.
+
+Instead:
+
+CreatePurchaseRequest
+
+contains only what the client is allowed to submit.
+
+And:
+
+PurchaseResponse
+
+contains only what the client needs to see.
+
+8.7.2 Request DTO vs Response DTO
+
+Think of the direction.
+
+Request DTO
+Frontend
+   ↓
+CreatePurchaseRequest
+   ↓
+Backend
+Response DTO
+Backend
+   ↓
+PurchaseResponse
+   ↓
+Frontend
+
+They have different purposes.
+
+For example:
+
+{
+  "supplierId": "uuid",
+  "orderedWeightKg": 250.000,
+  "ratePerKg": 4250.00,
+  "paymentType": "CREDIT",
+  "creditDays": 30
+}
+
+The frontend should not send:
+
+purchaseNumber
+dueDate
+status
+createdAt
+supplierOutstanding
+
+because those are backend responsibilities.
+
+8.7.3 Example: Create Purchase
+
+Request:
+
+{
+  "supplierId": "8f...",
+  "purchaseDate": "2026-09-11",
+  "orderedWeightKg": 250.000,
+  "ratePerKg": 4250.00,
+  "paymentType": "CREDIT",
+  "creditDays": 30,
+  "notes": "Raw silk purchase"
+}
+
+The backend generates:
+
+purchaseNumber
+dueDate
+status
+id
+createdAt
+updatedAt
+
+Response:
+
+{
+  "id": "uuid",
+  "purchaseNumber": "PUR-2026-0012",
+  "supplierId": "uuid",
+  "purchaseDate": "2026-09-11",
+  "orderedWeightKg": 250.000,
+  "ratePerKg": 4250.00,
+  "paymentType": "CREDIT",
+  "creditDays": 30,
+  "dueDate": "2026-10-11",
+  "status": "PENDING_RECEIPT"
+}
+
+This separation is extremely important.
+
+8.7.4 DTO package structure
+
+Inside each module:
+
+procurement/
+├── controller/
+├── dto/
+│   ├── CreatePurchaseRequest
+│   ├── PurchaseResponse
+│   ├── CreateMaterialReceiptRequest
+│   └── MaterialReceiptResponse
+├── service/
+├── domain/
+├── repository/
+└── mapper/
+
+Similarly:
+
+orders/
+├── controller/
+├── dto/
+├── service/
+├── domain/
+└── repository/
+
+This keeps modules independent.
+
+8.7.5 Bean Validation
+
+Spring Boot supports Jakarta Bean Validation.
+
+Basic validation belongs on request DTOs.
+
+Conceptually:
+
+name → required
+weight → positive
+amount → positive
+creditDays → non-negative
+phone → valid format
+
+Typical annotations include:
+
+@NotNull
+@NotBlank
+@Positive
+@PositiveOrZero
+@Size
+@Pattern
+@Email
+@Valid
+
+For example:
+
+CreatePurchaseRequest
+
+supplierId       → required
+purchaseDate     → required
+orderedWeightKg  → positive
+ratePerKg        → positive
+creditDays       → >= 0
+8.7.6 But validation is NOT business logic
+
+This distinction is very important for your interview.
+
+Consider:
+
+orderedWeightKg > 0
+
+That's DTO validation.
+
+But:
+
+receivedWeight <= remainingPurchaseWeight
+
+is a business rule.
+
+Similarly:
+
+payment amount > 0
+
+is basic validation.
+
+But:
+
+allocated payment <= outstanding amount
+
+is a business rule.
+
+So:
+
+DTO Validation
+       ↓
+Basic input correctness
+
+Application/Domain
+       ↓
+Business correctness
+8.7.7 Example: Material Receipt
+
+Request:
+
+{
+  "receiptDate": "2026-09-11",
+  "receivedWeightKg": 100,
+  "acceptedWeightKg": 98.5,
+  "rejectedWeightKg": 1.5
+}
+
+Basic validation:
+
+receivedWeightKg > 0
+acceptedWeightKg >= 0
+rejectedWeightKg >= 0
+
+Business validation:
+
+accepted + rejected <= received
+
+And:
+
+received <= purchase.remainingReceivableWeight
+
+The second set belongs to the application/domain layer.
+
+8.7.8 Controller responsibility
+
+Your controller should be thin.
+
+Conceptually:
+
+POST /purchases
+       ↓
+Controller
+       ↓
+Validate request
+       ↓
+Call CreatePurchase
+       ↓
+Return response
+
+It should not do:
+
+calculate outstanding
+calculate stock
+create inventory movement
+calculate due date
+allocate payments
+
+If your controller becomes 100+ lines, something is probably wrong.
+
+8.7.9 Application Service responsibility
+
+The application service coordinates the use case.
+
+Example:
+
+ReceiveMaterialService
+
+might perform:
+
+1. Load purchase
+2. Validate purchase state
+3. Validate quantity
+4. Create receipt
+5. Create inventory movement
+6. Update purchase status
+7. Save everything
+8. Commit
+
+That is exactly where your transaction boundary belongs.
+
+Conceptually:
+
+@Transactional
+ReceiveMaterial(...)
+
+One business operation → one transaction.
+
+8.7.10 Domain responsibility
+
+Suppose a production batch has:
+
+Input = 100 kg
+Output = 96 kg
+Wastage = 4 kg
+
+Valid:
+
+100 = 96 + 4
+
+But:
+
+Input = 100
+Output = 96
+Wastage = 2
+
+Invalid.
+
+That rule should not depend on HTTP.
+
+The domain should understand:
+
+Production quantities must balance.
+
+Therefore even if tomorrow you add:
+
+REST API
+Voice AI
+WhatsApp
+Admin panel
+
+the same business rule remains enforced.
+
+8.7.11 Exception handling
+
+You don't want every controller doing:
+
+try
+catch
+catch
+catch
+
+Instead use centralized exception handling.
+
+Conceptually:
+
+Controller
+     ↓
+Exception
+     ↓
+Global Exception Handler
+     ↓
+Standard Error Response
+
+For example:
+
+PurchaseNotFoundException
+
+becomes:
+
+404 NOT_FOUND
+
+And:
+
+InsufficientInventoryException
+
+becomes:
+
+409 INSUFFICIENT_INVENTORY
+8.7.12 SmartSilk exception categories
+
+Create meaningful business exceptions.
+
+For example:
+
+ResourceNotFoundException
+
+PurchaseNotFoundException
+OrderNotFoundException
+PartyNotFoundException
+
+InsufficientInventoryException
+
+OrderLockedException
+
+InvalidStateTransitionException
+
+PaymentAllocationExceededException
+
+PurchaseReceiptExceededException
+
+ConcurrentModificationException
+
+DuplicateRequestException
+
+Don't throw generic:
+
+RuntimeException("Something went wrong")
+
+for business failures.
+
+8.7.13 Standard error response
+
+Your frontend should always know what kind of error occurred.
+
+Use something like:
+
+{
+  "timestamp": "2026-09-11T19:30:00+05:30",
+  "status": 409,
+  "code": "ORDER_LOCKED",
+  "message": "This order cannot be modified because production has already started.",
+  "path": "/api/v1/orders/abc"
+}
+
+Now Kotlin can handle it cleanly.
+
+For example:
+
+ORDER_LOCKED
+      ↓
+Show "Order is already in production"
+
+instead of displaying:
+
+500 Internal Server Error
+8.7.14 Error code vs message
+
+Don't rely only on the message.
+
+Bad frontend logic:
+
+if message == "Order cannot be modified..."
+
+Because someone might change the wording.
+
+Instead:
+
+code = ORDER_LOCKED
+
+The message can change.
+
+The code remains stable.
+
+So:
+
+code → machine-readable
+message → human-readable
+8.7.15 State transitions
+
+This is particularly important for SmartSilk.
+
+Don't allow:
+
+PATCH /production-batch/{id}
+
+to arbitrarily change:
+
+status = COMPLETED
+
+Instead expose operations:
+
+POST /production-batches/{id}/start
+POST /production-batches/{id}/complete
+
+Then the backend controls valid transitions.
+
+For example:
+
+PLANNED
+   ↓
+IN_PROGRESS
+   ↓
+COMPLETED
+
+But:
+
+COMPLETED
+   ↓
+PLANNED
+
+should not be allowed.
+
+Return:
+
+409 INVALID_STATE_TRANSITION
+
+This protects your domain.
+
+8.7.16 Why action endpoints are useful
+
+REST purists sometimes say everything should be CRUD.
+
+Real business systems aren't always simple CRUD.
+
+Consider:
+
+POST /production-batches/{id}/complete
+
+This means:
+
+Perform the business operation of completing production.
+
+Completing production may:
+
+consume raw material
+create output
+record wastage
+allocate output to orders
+update inventory
+record worker relationship
+change production state
+
+That's clearly more than:
+
+UPDATE production_batches SET status = 'COMPLETED'
+
+Therefore an explicit action endpoint makes sense.
+
+8.7.17 API security
+
+Your REST API must not assume:
+
+If someone can call the endpoint, they are allowed to perform it.
+
+Spring Security handles authentication and authorization.
+
+Conceptually:
+
+Request
+  ↓
+JWT Authentication
+  ↓
+User identified
+  ↓
+Permission check
+  ↓
+Controller
+
+For example:
+
+ADMIN
+BUSINESS_OWNER
+STAFF
+
+You can later define more granular permissions.
+
+Example:
+
+PURCHASE_CREATE
+PAYMENT_CREATE
+EXPENSE_CREATE
+REPORT_VIEW
+
+Don't put security decisions in the Kotlin frontend.
+
+The frontend can hide buttons, but:
+
+The backend must enforce authorization.
+
+8.7.18 Important SmartSilk security example
+
+Suppose the frontend hides:
+
+Delete Payment
+
+A malicious user could still manually call:
+
+DELETE /api/v1/payments/123
+
+Therefore the backend must reject unauthorized operations.
+
+Also, for financial records, deletion itself should generally not be allowed.
+
+Instead:
+
+Payment
+   ↓
+Correction / Reversal
+
+This preserves the audit trail.
+
+8.7.19 API versioning
+
+Start with:
+
+/api/v1
+
+Suppose later you radically change the API.
+
+You can introduce:
+
+/api/v2
+
+without immediately breaking existing clients.
+
+For your college MVP, you don't need a complicated versioning strategy.
+
+URL versioning is simple and sufficient:
+
+/api/v1/...
+8.7.20 Mapping DTO → Domain
+
+One common mistake is:
+
+Request DTO
+    ↓
+JPA Entity directly
+
+Instead conceptually:
+
+CreatePurchaseRequest
+        ↓
+Application Service
+        ↓
+Purchase domain object
+        ↓
+Persistence entity
+
+You can use mapper classes when the mapping becomes substantial.
+
+The important point is:
+
+Don't let API representation dictate your domain model.
+
+8.7.21 Complete example: Receive Material
+
+Let's trace the whole thing.
+
+Request
+POST
+/api/v1/purchases/PUR_ID/receipts
+{
+  "receiptDate": "2026-09-11",
+  "receivedWeightKg": 100,
+  "acceptedWeightKg": 98.5,
+  "rejectedWeightKg": 1.5
+}
+Step 1 — Controller
+
+Receives request.
+
+↓
+Validate DTO
+Step 2 — Application Service
+ReceiveMaterial
+Step 3 — Load purchase
+Purchase
+ordered = 250 kg
+already received = 100 kg
+remaining = 150 kg
+Step 4 — Validate
+
+Requested:
+
+100 kg
+
+Remaining:
+
+150 kg
+
+Valid.
+
+Step 5 — Acquire inventory lock
+
+Protect against another simultaneous receipt/consumption.
+
+Step 6 — Create receipt
+received = 100
+accepted = 98.5
+rejected = 1.5
+Step 7 — Create inventory movement
+RAW_SILK
+RECEIPT
++98.5 kg
+
+Notice that rejected material doesn't become usable stock.
+
+Step 8 — Update purchase state
+
+If:
+
+received total < ordered
+
+then:
+
+PARTIALLY_RECEIVED
+
+If complete:
+
+FULLY_RECEIVED
+Step 9 — Commit
+
+Everything succeeds together.
+
+8.7.22 Complete payment flow
+POST /api/v1/payments
+        Request
+           ↓
+      Validate DTO
+           ↓
+    RecordCustomerPayment
+           ↓
+      Load customer
+           ↓
+    Validate allocations
+           ↓
+   Lock relevant obligations
+           ↓
+      Create Payment
+           ↓
+  Create Payment Allocations
+           ↓
+ Create Financial Transaction
+           ↓
+          COMMIT
+           ↓
+      Response DTO
+
+If the financial transaction fails:
+
+Payment
+Payment Allocations
+Financial Transaction
+
+should all roll back.
+
+That is why your application service transaction boundary matters.
+
+8.7.23 Don't call external APIs inside the transaction
+
+Suppose after payment you want to send WhatsApp:
+
+Payment
+ ↓
+DB transaction
+ ↓
+WhatsApp API
+ ↓
+Commit
+
+Bad.
+
+What if WhatsApp takes 10 seconds?
+
+Your DB transaction remains open.
+
+Worse:
+
+Payment DB succeeds
+WhatsApp fails
+
+You don't want the financial transaction rolled back merely because WhatsApp was unavailable.
+
+Instead:
+
+Payment transaction
+       ↓
+COMMIT
+       ↓
+Publish event / schedule task
+       ↓
+WhatsApp notification
+
+This is an important production architecture principle.
+
+8.7.24 API documentation
+
+You should eventually document the APIs using OpenAPI/Swagger.
+
+For example:
+
+POST /api/v1/purchases
+
+should document:
+
+Request
+Response
+Validation
+Possible status codes
+Error codes
+Authentication
+
+This gives your Kotlin frontend developer a clear contract.
+
+It also becomes an excellent interview talking point:
+
+"I designed the backend contract using REST and documented it with OpenAPI."
+
+8.7.25 What you should NOT implement yet
+
+Don't overengineer Step 8.
+
+You do not need:
+
+GraphQL
+gRPC
+Kafka
+Event sourcing
+CQRS
+API Gateway
+Service mesh
+Microservices
+Distributed transactions
+
+For SmartSilk:
+
+Spring Boot
++
+REST
++
+DTOs
++
+Validation
++
+Centralized exceptions
++
+JWT
++
+OpenAPI
++
+PostgreSQL
+
+is more than enough.
+
+8.7.26 Final backend request flow
+
+You should now have this mental model:
+
+                 KOTLIN
+                   │
+                   │ JSON / HTTP
+                   ▼
+             REST CONTROLLER
+                   │
+                   ▼
+              REQUEST DTO
+                   │
+              Validation
+                   │
+                   ▼
+          APPLICATION SERVICE
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+     Domain Rules       Repositories
+          │                 │
+          └────────┬────────┘
+                   ▼
+              PostgreSQL
+                   │
+                   ▼
+             RESPONSE DTO
+                   │
+                   ▼
+                KOTLIN
+
+And when something goes wrong:
+
+Exception
+   ↓
+Global Exception Handler
+   ↓
+Standard Error DTO
+   ↓
+Kotlin
+Step 8.7 — What you should produce
+
+Before implementation, your backend design should now contain these artifacts:
+
+01. API endpoint list
+02. Request DTO definitions
+03. Response DTO definitions
+04. Validation rules
+05. Business exception list
+06. Error response structure
+07. State transition rules
+08. Authentication/authorization requirements
+09. Transaction boundaries
+10. OpenAPI documentation plan
+Your most important distinction
+
+Memorize this for your interview:
+
+DTO validation checks whether the input is structurally valid. Application/domain validation checks whether the requested operation is valid according to business rules. Database constraints protect structural integrity.
+
+For SmartSilk:
+
+"weight must be positive"
+        → DTO validation
+
+"cannot receive more than purchased"
+        → Business rule
+
+"foreign key must reference existing supplier"
+        → Database constraint
+
+"only authorized user can record payment"
+        → Security
+
+That separation is what makes the backend production-grade.

@@ -1,0 +1,1553 @@
+# SmartSilk — System Requirements & Scope
+
+**Project:** SmartSilk
+**Stage:** Step 3 — Define System Requirements and Scope
+**Project Type:** Semester Project
+**Domain:** Silk Yarn Trading and Warp Manufacturing
+**Primary User:** Business Owner / Admin
+
+---
+
+# 1. Purpose of the System
+
+SmartSilk is a business management system designed for a family-run silk yarn trading and warp manufacturing business.
+
+The purpose of SmartSilk is not merely to digitize existing notebooks and ledgers. The system is intended to provide a consolidated and reliable view of:
+
+* Raw silk availability
+* Material movement
+* Customer orders
+* Production and work-in-progress
+* Outsourced manufacturing
+* Customer receivables
+* Supplier payables
+* Worker obligations
+* Cash and bank balances
+* Expenses
+* Personal drawings
+* Loans
+* Chit investments
+* Bills and business records
+* Upcoming financial commitments
+* Business performance
+
+The system should help the business owner make decisions using recorded business information instead of relying primarily on memory, notebooks, and mental calculations.
+
+---
+
+# 2. System Objectives
+
+SmartSilk has the following major objectives:
+
+1. Digitize the important operational and financial records of the business.
+2. Provide visibility into the current physical material position.
+3. Track customer orders and outstanding amounts.
+4. Track supplier purchases, credit and outstanding payables.
+5. Track in-house and outsourced warp production.
+6. Track worker and manufacturer obligations.
+7. Maintain a reliable financial transaction history.
+8. Distinguish actual available money from receivables, payables and future commitments.
+9. Track physical cash and multiple business bank accounts.
+10. Maintain historical records for audit and correction purposes.
+11. Provide reminders for important business obligations.
+12. Provide a consolidated owner dashboard.
+13. Establish a foundation for future AI-assisted decision support.
+14. Improve business visibility without unnecessarily complicating the system.
+
+---
+
+# 3. Primary User and Actors
+
+## 3.1 Primary System User
+
+### Business Owner / Admin
+
+The owner is the primary and currently only direct SmartSilk user.
+
+The Admin can:
+
+* Create and modify business records
+* Record purchases
+* Record customer orders
+* Record payments
+* Record production
+* Record expenses
+* Manage loans and chits
+* Manage cash and bank transactions
+* Generate documents
+* View dashboards and reports
+* Correct/reverse transactions where permitted
+* Configure reminders and business settings
+
+For the MVP:
+
+> **Only one role — Admin — is required.**
+
+Future role-based access can be introduced if the business expands.
+
+---
+
+## 3.2 External Business Parties
+
+The following parties participate in business processes but do not require direct SmartSilk access in the MVP:
+
+* Customers
+* Suppliers
+* Workers
+* Outsourced warp manufacturers
+* Banks
+* Auditors
+
+---
+
+# 4. Scope of the System
+
+SmartSilk covers the following major business areas:
+
+1. Supplier and Purchase Management
+2. Inventory and Material Flow
+3. Customer and Sales Order Management
+4. In-house Production and Workers
+5. Outsourced Warp / Job Work
+6. Customer Payments and Receivables
+7. Financial Ledger, Bank and Cash Management
+8. Expenses and Personal Drawings
+9. Chit Management
+10. Loan Management
+11. Bills, Documents and Audit Records
+12. Notifications and Alerts
+13. Dashboard and Business Intelligence
+
+---
+
+# 5. Functional Requirements
+
+## 5.1 Supplier and Purchase Management
+
+SmartSilk shall:
+
+* Maintain supplier records.
+* Record raw silk purchases.
+* Record purchase date.
+* Record raw silk weight in kilograms.
+* Record purchase amount.
+* Record supplier credit terms.
+* Calculate or record supplier due dates.
+* Track supplier outstanding amounts.
+* Track overdue supplier obligations.
+* Support supplier-specific credit periods.
+* Support configurable supplier penalties where applicable.
+* Record supplier payments.
+* Allocate supplier payments to the oldest outstanding purchase first.
+* Preserve supplier payment history.
+* Attach purchase documents where available.
+* Track whether purchased material has been received.
+
+### Purchase triggers
+
+Purchasing may be initiated because of:
+
+* Confirmed customer demand
+* Raw silk trading demand
+* Low stock
+* Expected future demand
+
+The system may provide a low-stock indication, but purchasing remains an owner decision.
+
+### Purchase pricing
+
+The owner manually enters:
+
+* Weight
+* Price per kilogram
+* Total purchase amount
+
+The system must not attempt to automatically predict daily silk prices.
+
+---
+
+# 6. Inventory and Material Flow
+
+SmartSilk shall provide visibility into the physical location and state of business material.
+
+## 6.1 Main inventory categories
+
+The system shall distinguish:
+
+* Available raw silk
+* Allocated raw silk
+* Raw silk in processing
+* Rolling WIP
+* Warp-production WIP
+* Outsourced WIP
+* Finished warp
+* Returned material
+* Wastage
+* Material discrepancies
+
+The primary quantity measurement is:
+
+> **Weight in kilograms.**
+
+Detailed warp measurements such as length, width, thread count and similar specifications are outside the current scope.
+
+## 6.2 Material destinations
+
+Purchased raw silk may be:
+
+* Sold directly as raw silk
+* Used for in-house production
+* Sent for outsourced production
+
+## 6.3 Vuda Warp
+
+Vuda warp is treated as a directly traded product.
+
+The system shall support:
+
+```text
+Purchase Vuda Warp
+       ↓
+Inventory
+       ↓
+Sale
+```
+
+No production workflow is required for Vuda warp.
+
+## 6.4 Wastage
+
+The system shall allow the Admin to manually record wastage.
+
+The system shall not attempt to automatically determine wastage.
+
+This allows the system to distinguish:
+
+```text
+Available Material
+WIP
+Finished Material
+Wastage
+```
+
+## 6.5 Returns
+
+Returned material shall be represented as a business event.
+
+If returned material is usable:
+
+```text
+Return
+  ↓
+Inventory
+  ↓
+Possible resale
+```
+
+If unusable:
+
+```text
+Return
+  ↓
+Wastage
+```
+
+If the customer is responsible for the problem and the return is rejected, the customer remains responsible for the payment.
+
+---
+
+# 7. Customer and Sales Order Management
+
+SmartSilk shall:
+
+* Maintain customer records.
+* Record customer orders.
+* Record order dates.
+* Record product type.
+* Record weight.
+* Record selling price.
+* Record total order value.
+* Record advance payments.
+* Record outstanding amount.
+* Track order status.
+* Track delivery.
+* Associate orders with production where applicable.
+* Track returns or damage where applicable.
+
+Customers may purchase:
+
+* Raw silk
+* Kora / normal warp
+* Silk warp
+* Vuda warp
+
+## 7.1 Customer credit
+
+Customers do not have one universal fixed credit period.
+
+Customers may:
+
+* Pay in advance
+* Pay partially
+* Pay after receiving material
+* Pay after several months
+* Pay the complete amount later
+
+Therefore SmartSilk shall not create artificial fixed due dates for customers.
+
+Instead, the system shall track:
+
+* Outstanding amount
+* Order date
+* Age of outstanding amount
+
+Customer-specific credit periods may be configured where required.
+
+## 7.2 Payment allocation
+
+Customer payments shall normally follow:
+
+> **Oldest unpaid order first.**
+
+A single payment may settle multiple orders.
+
+An order may receive multiple payments.
+
+The system shall therefore maintain order-level and customer-level outstanding balances.
+
+---
+
+# 8. In-house Production and Worker Management
+
+The primary internally produced warp is:
+
+> **Kora / Normal Warp**
+
+## 8.1 Production flow
+
+```text
+Raw Silk
+   ↓
+Rolling
+   ↓
+Rolls
+   ↓
+Warping
+   ↓
+Finished Kora Warp
+```
+
+Production may be triggered by:
+
+* Customer orders
+* Anticipated demand during busy periods
+
+## 8.2 Production tracking
+
+SmartSilk shall record:
+
+* Warp type
+* Weight
+* Production date
+* Worker
+* Production status
+* Order association where applicable
+* Finished production
+* Wastage where manually identified
+
+Weight is the primary production measurement.
+
+## 8.3 Rolling workers
+
+Rolling workers are generally paid according to:
+
+```text
+Hours worked × applicable rate
+```
+
+Payments are generally made weekly.
+
+## 8.4 Warp workers
+
+Warp workers are generally paid according to:
+
+```text
+Warp weight × applicable rate
+```
+
+Payments are generally made weekly.
+
+Worker rates are mostly fixed and may change annually.
+
+Historical work must retain the rate applicable when that work was performed.
+
+## 8.5 Production allocation
+
+The owner decides which customer receives completed warp.
+
+The normal priority may be first-come-first-served, but urgent requirements may change the allocation.
+
+---
+
+# 9. Outsourced Warp / Job Work
+
+SmartSilk shall track warp manufacturing performed by external manufacturers.
+
+## 9.1 Reasons for outsourcing
+
+Outsourcing may occur because:
+
+* Customer requires a particular warp
+* Internal workers are unavailable
+* Internal production capacity is occupied
+* External machine capacity is available
+* Additional production capacity is required
+
+## 9.2 Outsourcing tracking
+
+The system shall record:
+
+* Manufacturer
+* Date material was supplied
+* Raw silk weight supplied
+* Warp type
+* Related customer/order where applicable
+* Current WIP
+* Finished warp received
+* Finished weight
+* Applicable production rate
+* Amount payable
+* Payment status
+* Payment history
+
+## 9.3 Manufacturer payment
+
+Manufacturer payment is generally calculated based on:
+
+```text
+Finished warp weight × applicable rate
+```
+
+Rates may vary by warp type.
+
+Payments are generally settled monthly.
+
+## 9.4 Outsourced wastage
+
+The business currently does not systematically receive or monitor manufacturer wastage.
+
+SmartSilk shall therefore track the material supplied and finished material received, while allowing the Admin to manually identify and record discrepancies or wastage where required.
+
+## 9.5 Outsourcing analysis
+
+The system should provide a foundation for comparing:
+
+* In-house production cost
+* Outsourcing cost
+* Material cost
+* Customer revenue
+* Contribution/profitability
+
+Advanced profitability analysis may be expanded later.
+
+---
+
+# 10. Customer Payments and Receivables
+
+SmartSilk shall:
+
+* Record customer payments.
+* Record payment date.
+* Record payment amount.
+* Associate payment with customer.
+* Allocate payments to outstanding orders.
+* Support partial payments.
+* Support multiple payments for an order.
+* Maintain customer outstanding balance.
+* Maintain order-level payment status.
+* Preserve payment history.
+
+Payment allocation is normally:
+
+> Oldest unpaid order first.
+
+Customer payments reduce receivables and increase the relevant cash/bank position.
+
+---
+
+# 11. Financial Ledger, Bank and Cash Management
+
+SmartSilk shall maintain a central financial record while preserving business-specific views.
+
+## 11.1 Financial transaction principle
+
+Every meaningful money movement shall be traceable to:
+
+* Transaction type
+* Business reason
+* Source
+* Destination where applicable
+* Date
+* Amount
+
+The system must distinguish:
+
+> **Business events from money movements.**
+
+For example:
+
+```text
+Sale → creates customer receivable
+Payment → settles receivable and moves money
+```
+
+## 11.2 Payment methods
+
+General financial transactions may use:
+
+* Cash
+* UPI
+* Bank transfer
+* Cheque
+
+Chit transactions are an exception and are **cash-only**.
+
+## 11.3 Bank accounts
+
+The system shall support:
+
+* Multiple business bank accounts
+* Manual account configuration
+* Opening balance
+* Current balance
+* Transaction history
+* Bank-specific transactions
+
+## 11.4 Physical cash
+
+Physical business cash shall be tracked separately.
+
+Cash may enter through:
+
+* Customer cash payments
+* Bank withdrawals
+* Refunds/returned money
+
+Cash may leave through:
+
+* Expenses
+* Supplier payments
+* Worker payments
+* Chit contributions
+* Loan payments
+* Personal drawings
+
+## 11.5 Internal transfers
+
+The system shall support:
+
+* Bank → Cash
+* Cash → Bank
+* Bank → Bank
+
+Internal transfers are not revenue or expenses.
+
+## 11.6 Available money
+
+The system shall define available money as:
+
+```text
+Available Money
+=
+Physical Cash
++
+Available/Cleared Bank Balances
+```
+
+Customer receivables and future financial inflows shall not be treated as currently available money.
+
+## 11.7 Cheques
+
+Cheques shall have a pending/cleared state.
+
+A pending cheque shall not affect actual available balance until clearance.
+
+## 11.8 Reconciliation
+
+The system shall support:
+
+* Identification of cash/bank discrepancies
+* Manual reconciliation
+* Documented balance adjustments
+* Reason for adjustments
+* Preservation of previous history
+
+The system shall not silently overwrite historical balances.
+
+## 11.9 Bank integration
+
+For the MVP, bank transactions may be entered manually.
+
+Future functionality may include:
+
+* Bank API integration
+* Automatic transaction retrieval
+* Automatic bank deductions/EMI detection
+* Statement import
+* Automated reconciliation
+
+Manual entry must remain available even when integrations exist.
+
+---
+
+# 12. Expenses and Personal Drawings
+
+SmartSilk shall record business expenses.
+
+Each expense shall support:
+
+* Date
+* Amount
+* Category/reason
+* Payment source
+* Recurring or one-time classification
+* Optional supporting document
+
+Expense categories shall be configurable.
+
+The expense date represents the actual payment date.
+
+## 12.1 Personal drawings
+
+When business money is used for personal purposes, it shall be classified separately as:
+
+> **Personal Drawing**
+
+Personal drawings shall not automatically be treated as ordinary operating expenses in profitability analysis.
+
+## 12.2 Refunds
+
+Refunds shall be recorded separately from the original expense.
+
+Where applicable, available refund adjustments shall be tracked and may later be applied against another customer order.
+
+---
+
+# 13. Chit Management
+
+SmartSilk shall manage multiple chit investments.
+
+Each chit shall maintain a separate history.
+
+## 13.1 Chit contributions
+
+Chit contributions are:
+
+> **Physical cash only.**
+
+The system shall record:
+
+* Chit
+* Contribution date
+* Contribution amount
+* Contribution history
+* Remaining expected contributions
+
+Monthly contribution amounts may change based on the chit bidding process.
+
+## 13.2 Chit bidding
+
+The chit supports an auction/bidding mechanism.
+
+Conceptually:
+
+```text
+Participant bids
+      ↓
+Bid deduction
+      ↓
+Payout amount
+      ↓
+Benefit/deduction distributed
+      ↓
+Future contribution changes
+```
+
+The exact chit-specific calculation formula is intentionally left as a placeholder:
+
+> **CHIT_BIDDING_CALCULATION**
+
+The exact formula will be implemented after the business-specific calculation is finalized.
+
+## 13.3 Chit payout
+
+Chit payout is:
+
+> **Physical cash only.**
+
+The system shall record:
+
+* Chit
+* Payout date
+* Payout amount
+
+The purpose or subsequent use of the payout does not need to be recorded.
+
+## 13.4 Organiser payment
+
+Additional organiser payment shall be recorded separately.
+
+## 13.5 Business classification
+
+The business treats the chit as an investment.
+
+Chit contributions and payouts must remain distinguishable from normal sales revenue and ordinary operating expenses.
+
+The business's chosen analysis may treat the lump-sum benefit as profit/investment return.
+
+---
+
+# 14. Loan Management
+
+SmartSilk shall support two loan categories:
+
+1. Bank loans
+2. Private-person loans
+
+## 14.1 Loan information
+
+The system shall record:
+
+* Loan type
+* Lender
+* Original principal
+* Current principal outstanding
+* Interest information
+* Interest due
+* Payment history
+* Loan status
+
+Loan purpose is not required.
+
+## 14.2 Interest
+
+Interest and principal shall be tracked separately.
+
+For private loans:
+
+* Interest can be manually recorded.
+* Interest may be paid separately from principal.
+
+For bank loans:
+
+* Interest information may be entered manually in the MVP.
+* Future bank integration may provide relevant interest/EMI information automatically.
+
+## 14.3 Principal repayment
+
+The system shall support:
+
+* Partial principal repayment
+* Full repayment
+* Early repayment
+
+Early repayment has:
+
+> **No penalty according to the current business requirement.**
+
+## 14.4 Loan completion
+
+A loan is completed when its required obligations have been settled.
+
+Completed loans shall remain in historical records.
+
+## 14.5 Loan decision support
+
+SmartSilk should eventually suggest whether available money should be used for:
+
+* Interest payment
+* Partial principal repayment
+* Full repayment
+
+The recommendation shall consider:
+
+* Available cash/bank balance
+* Supplier obligations
+* Worker obligations
+* Chit commitments
+* Other immediate financial requirements
+
+The system only provides a recommendation.
+
+It shall never automatically execute the payment.
+
+---
+
+# 15. Bills, Documents and Audit Records
+
+SmartSilk shall retain business documents associated with relevant records.
+
+## 15.1 Sales bills
+
+A sales bill may normally be generated after the order is fully paid.
+
+However:
+
+> A bill may be generated before full payment when requested by the customer.
+
+A bill therefore does not automatically mean that the order is paid.
+
+Bills shall have unique identifiers/numbers.
+
+## 15.2 Purchase documents
+
+Purchase bills/documents should be associated with supplier purchases.
+
+Supplier bills received digitally may eventually support automated extraction.
+
+## 15.3 Supporting documents
+
+Expense receipts and supporting documents are optional.
+
+The business does not require a document for every expense.
+
+## 15.4 Audit retrieval
+
+The system should allow records to be retrieved by:
+
+* Date/period
+* Transaction type
+* Business category
+
+Records may be downloaded for audit purposes.
+
+## 15.5 History preservation
+
+Issued documents and important transactions must not be silently deleted or overwritten.
+
+Corrections should preserve the original history.
+
+## 15.6 GST
+
+Detailed GST functionality is **outside the current MVP scope**.
+
+Future GST functionality may include:
+
+* GST calculation
+* HSN/SAC
+* CGST/SGST/IGST
+* GST reconciliation
+* Credit/debit notes
+* Advanced GST reporting
+
+---
+
+# 16. Notifications, Reminders and Alerts
+
+SmartSilk shall provide configurable reminders for important business conditions.
+
+## 16.1 Supplier reminders
+
+The system shall support:
+
+* Reminder before due date
+* Due-date notification
+* Overdue notification
+* Total supplier payable
+* Individual purchase payable
+
+Default reminder timing may be approximately 3–4 days before due date and must be configurable.
+
+---
+
+## 16.2 Customer reminders
+
+The system may notify when:
+
+* Customer credit period is approaching
+* Outstanding becomes due according to customer-specific terms
+* Outstanding becomes overdue/significant
+
+Default reminder timing may be approximately 1–2 days before the relevant period and must be configurable.
+
+---
+
+## 16.3 Loan reminders
+
+The system shall support:
+
+* Upcoming loan payment reminders
+* Interest reminders
+* Loan identification
+* Amount due
+
+The timing must be configurable.
+
+---
+
+## 16.4 Chit reminders
+
+The system shall notify which chit requires payment.
+
+The notification does not need to display the amount.
+
+The user can open the chit module to see the amount and calculation.
+
+---
+
+## 16.5 Worker payments
+
+Worker payments are displayed within the system.
+
+No notification is required.
+
+---
+
+## 16.6 Outsourcing
+
+No notification is required for outsourced work because the business currently handles this operationally through phone communication.
+
+---
+
+## 16.7 Raw material alerts
+
+The system shall alert when:
+
+* Raw silk falls below its configured threshold.
+* Available raw silk is insufficient for confirmed orders.
+
+The alert is decision support, not automatic purchasing.
+
+---
+
+## 16.8 Finished warp
+
+No automatic notification is required when finished warp is completed.
+
+The business physically receives, checks and weighs the finished warp before dispatch.
+
+---
+
+## 16.9 Financial alerts
+
+The system should identify conditions such as:
+
+* Low available cash
+* Large upcoming supplier obligations
+* Large upcoming loan obligations
+* Chit commitments
+* Insufficient money for known obligations
+* Bank/cash mismatch
+* Significant customer outstanding
+
+---
+
+## 16.10 Notification configuration
+
+The Admin shall be able to configure:
+
+* Notification category
+* Enabled/disabled state
+* Timing
+* Frequency
+* Priority
+
+Notifications remain unresolved until the underlying condition is resolved.
+
+---
+
+# 17. Dashboard and Business Intelligence
+
+The dashboard is a consolidated output of the system rather than a separate manual-entry process.
+
+The dashboard should provide visibility into the current business position.
+
+## 17.1 Material position
+
+The dashboard should show:
+
+* Raw silk available
+* Raw silk allocated
+* Raw silk in WIP
+* Outsourced WIP
+* Finished warp
+* Wastage/discrepancies
+
+## 17.2 Order position
+
+The dashboard should show:
+
+* Pending orders
+* Orders in production
+* Ready orders
+* Delivered orders
+* Customer outstanding
+
+## 17.3 Financial position
+
+The dashboard should show:
+
+* Physical cash
+* Individual bank balances
+* Total available money
+* Customer receivables
+* Supplier payables
+* Worker obligations
+* Manufacturer obligations
+* Loan obligations
+* Chit commitments
+
+Available money and future obligations must remain conceptually separate.
+
+## 17.4 Business performance
+
+The system should eventually provide:
+
+* Revenue
+* Expenses
+* Interest cost
+* Production cost
+* Outsourcing cost
+* Profitability
+* Monthly trends
+* Yearly trends
+
+Detailed profitability analysis can be expanded after the core system is operational.
+
+---
+
+# 18. Initial Business Setup
+
+SmartSilk will begin with an existing business state.
+
+Historical records cannot be automatically reconstructed from the existing notebooks.
+
+Therefore, initial business information shall be manually entered by the Admin.
+
+Opening information may include:
+
+* Existing customers and outstanding balances
+* Existing suppliers and payables
+* Existing raw silk stock
+* Existing finished warp
+* Existing WIP
+* Opening cash balance
+* Opening bank balances
+* Existing loans
+* Existing chits
+* Existing outstanding orders
+* Other required opening positions
+
+Opening balances represent the state of the business when SmartSilk begins operation.
+
+They must not be incorrectly interpreted as new revenue or expenses.
+
+---
+
+# 19. Global Business Rules
+
+The following rules apply across the system.
+
+## BR-01 — Admin control
+
+Only the Admin can modify SmartSilk records in the MVP.
+
+## BR-02 — Historical preservation
+
+Important historical records must not be silently deleted or overwritten.
+
+## BR-03 — Corrections
+
+Incorrect financial or important business records should be corrected through reversal, adjustment or correction mechanisms that preserve history.
+
+## BR-04 — Business event vs money movement
+
+A business event and the associated money movement are separate concepts.
+
+Examples:
+
+```text
+Purchase → Supplier payable
+Payment → Money movement
+Sale → Customer receivable
+Customer payment → Money movement
+Loan → Liability + money received
+```
+
+## BR-05 — Internal transfers
+
+Transfers between the business's own financial locations are not revenue or expenses.
+
+## BR-06 — Payment allocation
+
+Customer and supplier payments normally follow oldest-outstanding-first allocation.
+
+## BR-07 — Available money
+
+Available money is based on physical cash and available/cleared bank balances.
+
+Receivables and future expected money are not immediately available money.
+
+## BR-08 — Personal drawings
+
+Business money used personally must remain distinguishable from ordinary business expenses.
+
+## BR-09 — Chit payment method
+
+Chit contributions and payouts are cash-only.
+
+## BR-10 — Loan classification
+
+Loan principal and interest must be distinguishable.
+
+Principal repayment is not an ordinary operating expense.
+
+## BR-11 — Inventory measurement
+
+Weight in kilograms is the primary material measurement for the current SmartSilk system.
+
+## BR-12 — Manual wastage
+
+Wastage is recorded manually by the Admin.
+
+## BR-13 — Manual pricing
+
+The owner controls purchase and selling prices.
+
+The system does not automatically predict daily silk prices.
+
+## BR-14 — Owner decision authority
+
+The system may provide alerts, calculations and recommendations, but important business decisions remain with the owner.
+
+## BR-15 — AI safety
+
+AI may extract or suggest information, but it must not directly modify critical financial records without owner confirmation.
+
+## BR-16 — Documents are supporting records
+
+Transactions remain the source of truth. Documents represent or support those transactions.
+
+## BR-17 — Opening balances
+
+Existing business state is manually initialized when SmartSilk is first introduced.
+
+---
+
+# 20. Non-Functional Requirements
+
+## 20.1 Reliability
+
+Financial and material records must remain consistent after successful transactions.
+
+## 20.2 Data integrity
+
+Financial operations involving balances, payments and obligations must maintain transactional consistency.
+
+## 20.3 Security
+
+* Authentication is required.
+* Only the Admin can access the system in the MVP.
+* Financial modifications must be protected.
+* Sensitive business information must not be exposed unnecessarily.
+
+## 20.4 Auditability
+
+Important transactions should have:
+
+* Timestamp
+* Historical state
+* Modification/correction history where applicable
+
+## 20.5 Usability
+
+The system should minimize manual complexity because the primary user is a business owner who currently relies heavily on quick ledger entries and mental calculations.
+
+Important information should be accessible with minimal navigation.
+
+## 20.6 Maintainability
+
+The system should use a modular architecture so that future features can be added without redesigning the entire application.
+
+## 20.7 Performance
+
+Normal business operations such as:
+
+* Recording payments
+* Recording orders
+* Checking inventory
+* Viewing outstanding balances
+* Viewing the dashboard
+
+should respond quickly under expected small-business workloads.
+
+## 20.8 Scalability
+
+The MVP does not require enterprise-scale distributed architecture.
+
+A modular monolithic application is sufficient for the current business size.
+
+---
+
+# 21. MVP Scope
+
+The following capabilities are considered core MVP functionality.
+
+## Master data
+
+* Admin
+* Customers
+* Suppliers
+* Workers
+* Manufacturers
+* Bank accounts
+* Loans
+* Chits
+
+## Operations
+
+* Purchases
+* Raw silk inventory
+* Customer orders
+* In-house production
+* Outsourcing
+* Customer payments
+* Supplier payments
+* Worker payments
+* Manufacturer payments
+* Expenses
+* Personal drawings
+* Chit contributions/payout
+* Loan payments
+* Cash transactions
+* Bank transactions
+* Internal transfers
+
+## Visibility
+
+* Raw silk availability
+* WIP
+* Finished warp
+* Customer outstanding
+* Supplier payable
+* Worker payable
+* Manufacturer payable
+* Loan outstanding
+* Chit commitments
+* Cash balance
+* Bank balances
+* Available money
+* Pending orders
+
+## Documents
+
+* Basic sales bills
+* Purchase records/documents
+* Basic downloadable reports
+
+## Controls
+
+* Admin authentication
+* Transaction validation
+* Historical preservation
+* Reversal/correction
+* Basic audit history
+
+## Notifications
+
+* Supplier reminders
+* Loan reminders
+* Chit reminders
+* Customer outstanding alerts
+* Low-stock alerts
+* Major financial alerts
+
+---
+
+# 22. Future Enhancements
+
+The following are intentionally outside the core MVP:
+
+## AI
+
+* Voice-based transaction entry
+* Advanced financial advisor
+* Financial forecasting
+* Automated decision recommendations
+* Intelligent business analytics
+
+## WhatsApp
+
+* Automated bill sharing
+* Supplier bill extraction
+* Customer communication
+* WhatsApp-based transaction input
+
+## Banking
+
+* Bank API integration
+* Automatic transaction retrieval
+* Automatic reconciliation
+* Automatic EMI detection
+
+## Documents
+
+* OCR
+* Automated supplier bill extraction
+* Advanced document processing
+
+## GST
+
+* GST calculation
+* HSN/SAC
+* CGST/SGST/IGST
+* GST reconciliation
+* Advanced GST reporting
+* Credit/debit notes
+
+## Analytics
+
+* Advanced profitability analysis
+* In-house vs outsourcing optimization
+* Supplier performance analysis
+* Customer profitability
+* Production efficiency analysis
+* Material-loss analytics
+
+## Access control
+
+* Multiple user roles
+* Employee access
+* Accountant access
+* Role-based permissions
+
+---
+
+# 23. Explicitly Out of Scope for MVP
+
+The following shall not be introduced merely to make the system appear more sophisticated:
+
+* Microservices
+* Kubernetes
+* Kafka
+* Complex distributed architecture
+* Multiple databases
+* Enterprise-scale infrastructure
+* Automated purchasing
+* Automated financial transactions
+* Automatic daily silk-price prediction
+* Detailed warp dimensional modeling
+* Complex GST automation
+* Full accounting/ERP functionality
+
+The MVP should prioritize:
+
+> **Correctness → Business usefulness → Simplicity → Extensibility**
+
+rather than technology complexity.
+
+---
+
+# 24. Cross-Module Dependencies
+
+The major relationships are:
+
+```text
+Supplier
+   ↓
+Purchase
+   ↓
+Raw Silk Inventory
+   ↓
+┌───────────────┬─────────────────┐
+│               │                 │
+▼               ▼                 ▼
+Direct Sale   In-house         Outsourcing
+              Production       Job Work
+                   │                │
+                   ▼                ▼
+              Finished Warp     Finished Warp
+                   │                │
+                   └───────┬────────┘
+                           ▼
+                       Customer
+                           │
+                           ▼
+                         Order
+                           │
+                           ▼
+                      Receivable
+                           │
+                           ▼
+                        Payment
+                           │
+                           ▼
+                     Cash / Bank
+```
+
+Financial activities additionally connect:
+
+```text
+Cash / Bank
+   │
+   ├── Supplier payments
+   ├── Worker payments
+   ├── Manufacturer payments
+   ├── Expenses
+   ├── Chit contributions
+   ├── Loan payments
+   └── Personal drawings
+```
+
+And:
+
+```text
+Loans
+Chits
+Expenses
+Receivables
+Payables
+Cash
+Bank
+Inventory
+Orders
+Production
+```
+
+all contribute to the final:
+
+> **Owner Business Position**
+
+---
+
+# 25. Requirements That Are Intentionally Deferred
+
+The following have not been fully specified because they belong to later design stages:
+
+* Exact database fields
+* Exact database schema
+* Exact API endpoints
+* Exact accounting implementation
+* Exact inventory valuation method
+* Exact chit bidding formula
+* Detailed GST implementation
+* Exact bank API
+* Exact WhatsApp integration
+* Exact AI architecture
+* Exact notification technology
+* Detailed UI design
+* Deployment architecture
+
+These should not be invented during requirements definition.
+
+---
+
+# 26. Requirements Baseline Status
+
+The business requirements for the SmartSilk MVP are considered **substantially defined and ready for domain modeling**.
+
+The requirements establish:
+
+### Business actors
+
+Who interacts with the system.
+
+### Business processes
+
+How purchases, sales, production, outsourcing and financial operations occur.
+
+### Functional requirements
+
+What the system must be capable of doing.
+
+### Business rules
+
+What conditions and rules govern those operations.
+
+### Non-functional requirements
+
+How reliably, securely and maintainably the system should operate.
+
+### MVP scope
+
+What must be implemented for the semester project.
+
+### Future scope
+
+What is intentionally deferred.
+
+---
+
+# 27. Next Development Stage
+
+The next stage is:
+
+> **Step 4 — Domain Modeling**
+
+At this stage, the requirements will be converted into a business domain model.
+
+We will identify:
+
+* Core entities
+* Entity responsibilities
+* Relationships
+* Entity lifecycles
+* States
+* Business operations
+* Important constraints
+* Cross-module relationships
+
+For example:
+
+```text
+Supplier
+   │
+   └── Purchase
+          │
+          └── Raw Material
+
+Customer
+   │
+   └── Order
+          │
+          └── Sale
+                 │
+                 └── Payment
+
+Worker
+   │
+   └── Work Record
+          │
+          └── Worker Payable
+
+Manufacturer
+   │
+   └── Job Work
+          │
+          └── Manufacturer Payable
+
+Bank Account ── Financial Transaction
+Cash          ── Financial Transaction
+
+Loan ── Loan Payment
+Chit ── Chit Contribution / Payout
+Expense ── Financial Transaction
+```
+
+The domain model will then become the foundation for:
+
+```text
+Requirements
+     ↓
+Domain Model
+     ↓
+System Architecture
+     ↓
+Database Design
+     ↓
+API Design
+     ↓
+Implementation
+```
+
+**Step 3 is therefore complete.**

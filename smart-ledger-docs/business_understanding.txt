@@ -1,0 +1,795 @@
+SmartSilk — Business & Problem Analysis
+1. Business Overview
+1.1 Business Domain
+
+SmartSilk is intended for a silk yarn trading and silk warping business.
+
+The business primarily involves:
+
+Purchasing raw silk yarn from suppliers.
+Selling raw silk yarn directly to customers.
+Processing silk yarn into warp.
+Producing warp internally.
+Outsourcing warping-related manufacturing to other manufacturers when required.
+Selling the resulting warp to customers.
+Managing customer payments and outstanding amounts.
+Managing supplier payments and credit obligations.
+Managing business expenses.
+Managing investments such as chit funds.
+Managing short-term loans when immediate cash is required.
+
+Although accounting is an important part of the system, the broader objective is complete visibility of the business's material flow, sales, payments, expenses, investments and financial position.
+
+2. Business Objective
+
+The current business is operated primarily through manual records, particularly ledger notebooks.
+
+The objective of SmartSilk is to provide a centralized system for tracking the complete business lifecycle, from purchasing silk yarn to processing, selling, receiving payments, paying suppliers, managing expenses, investments and loans.
+
+The long-term objective is not simply to digitize the existing ledger.
+
+It is to allow the business owner to answer questions such as:
+
+How much silk do we currently have?
+How much silk is currently being processed?
+How much warp has been produced?
+How much has been sold?
+How much money should we receive from customers?
+How much do we owe suppliers?
+Which payments are approaching or overdue?
+How much money is available?
+How much is committed to chit funds?
+How much has been borrowed?
+How much interest must be paid?
+Where is money being lost?
+Where is material being lost?
+How is the business performing overall?
+3. People Involved
+3.1 Primary Users
+
+The system is intended primarily for family members involved in the business.
+
+There is currently no requirement for a large external user base.
+
+Therefore, the initial system can be considered a single-business/single-organization system, with a small number of trusted internal users.
+
+3.2 External Parties
+
+Although they are not direct SmartSilk users, the business interacts with:
+
+Silk yarn suppliers
+Customers/clients
+Other manufacturers/job workers
+WhatsApp
+Financial institutions/lenders
+Chit-fund organizations
+
+These parties are important to the business even though they may not directly operate SmartSilk.
+
+4. Core Business Flow
+
+At the highest level, the business operates through three interconnected flows.
+
+Material Flow
+Supplier
+   ↓
+Raw Silk Yarn
+   ↓
+ ┌───────────────┬─────────────────┐
+ ↓               ↓                 ↓
+Rolling        Direct Sale     Outsourced
+ ↓                               Processing
+Wastage                              ↓
+ ↓                                  Warp
+Roll                                  ↓
+ ↓                              Customer
+Warping
+ ↓
+Warp
+ ↓
+Customer
+Sales Flow
+Customer Order
+      ↓
+Warp / Raw Silk supplied
+      ↓
+Credit created
+      ↓
+Customer makes payments
+      ↓
+Outstanding reduced
+      ↓
+Order becomes fully settled
+      ↓
+Bill becomes available for filing/customer
+      ↓
+WhatsApp sharing when required
+Money Flow
+Business Money
+      │
+ ┌────┼─────────┬─────────┬─────────┐
+ ↓    ↓         ↓         ↓         ↓
+Raw  Supplier  Expenses  Chits    Loans
+Silk Payments
+      │
+      ↓
+Customer Receipts
+
+These flows are interconnected.
+
+For example:
+
+Raw silk purchase
+        ↓
+Material available
+        ↓
+Warp production
+        ↓
+Customer order
+        ↓
+Sale on credit
+        ↓
+Customer outstanding
+        ↓
+Future payment
+        ↓
+Business cash
+5. Raw Silk Procurement Process
+
+The business purchases silk yarn from suppliers.
+
+Suppliers can be:
+
+Businesses that supply raw silk yarn.
+Factories that extract silk from cocoons and supply the resulting silk yarn.
+
+The supplier and material characteristics vary depending on business requirements and demand.
+
+Purchases may happen:
+
+Weekly
+Monthly
+Based on customer demand
+
+The purchased material may be received together rather than in multiple partial deliveries.
+
+5.1 Supplier Credit
+
+Purchases are generally made on credit.
+
+An advance may sometimes be given, but it is not a fixed rule.
+
+Unlike customers, suppliers have a defined payment period.
+
+The supplier's credit period can vary.
+
+If payment exceeds the agreed period, a penalty may be applicable for each additional day.
+
+Therefore, SmartSilk needs to track:
+
+Purchase
+   ↓
+Amount payable
+   ↓
+Credit period
+   ↓
+Due date
+   ↓
+Payment
+   ↓
+Remaining payable
+   ↓
+Possible overdue
+   ↓
+Penalty
+6. What Happens After Raw Silk Is Purchased?
+
+Once the silk yarn is received, there are primarily two business directions:
+
+Option 1 — Direct Raw Silk Sale
+
+The purchased yarn can be sold directly to a customer.
+
+Raw Silk
+   ↓
+Customer
+   ↓
+Sale
+Option 2 — Warp Production
+
+The silk yarn can be processed to produce warp.
+
+Raw Silk
+   ↓
+Rolling
+   ↓
+Wastage
+   ↓
+Roll
+   ↓
+Warping
+   ↓
+Warp
+   ↓
+Customer
+7. Internal Warp Production
+
+Warp production has two operational stages for tracking purposes.
+
+Stage 1 — Yarn Rolling
+
+The silk yarn is rolled.
+
+During this process, some wastage occurs.
+
+Silk Yarn
+   ↓
+Rolling
+   ↓
+Wastage
+   ↓
+Roll
+
+The business wants to track this because it provides visibility into material loss.
+
+Stage 2 — Warping
+
+The resulting roll is processed using the warp machine.
+
+The warp is produced according to required measurements/specifications.
+
+The business uses measurements related to the type/format of warp and the expected number of sarees that can be produced from it.
+
+The exact format and measurement rules are still to be formally documented.
+
+8. Outsourced Manufacturing / Job Work
+
+The business can also provide silk yarn to other manufacturers.
+
+The process is:
+
+SmartSilk
+   │
+   ├── Provides silk yarn
+   │
+   └── Gives manufacturing order
+              ↓
+        External Manufacturer
+              ↓
+             Warp
+              ↓
+        Warp returned
+
+The important distinction is:
+
+The external manufacturer is paid for the manufacturing/labor work, rather than for the silk itself.
+
+The business does not currently treat the silk cost or wastage as the job worker's manufacturing charge because the silk is supplied by the business and the wastage is returned.
+
+Payment to the job worker is based on the weight of the produced warp.
+
+Therefore:
+
+Job Work Payment
+=
+Warp quantity × agreed manufacturing rate
+
+The exact rate varies and will need to be captured when the business rules are formalized.
+
+9. Customer Orders
+
+Customers place orders primarily through:
+
+Phone calls
+WhatsApp
+
+Orders may be:
+
+Single-quantity orders
+Bulk orders
+
+There is no fixed order size.
+
+The business may also manufacture regular warp orders during peak seasons based on expected demand.
+
+10. Customer Sales
+
+Customers may purchase:
+
+Raw silk yarn
+Finished warp
+
+Customer payment behavior differs from supplier payment behavior.
+
+Customers do NOT have a fixed payment deadline.
+
+A customer may:
+
+Pay an advance.
+Pay partially.
+Pay several times during a month.
+Pay the full amount later.
+Pay after several months.
+
+Therefore, customer payment tracking is based primarily on the customer's total outstanding balance.
+
+11. Customer Outstanding Model
+
+This is an important characteristic of the business.
+
+The current practice is not to maintain a strict payment schedule for every order.
+
+Instead:
+
+Total credit given to customer
+              ↓
+       Customer payments
+              ↓
+       Current outstanding
+
+For example:
+
+Customer purchases multiple orders
+            ↓
+      Total credit = X
+            ↓
+      Payments = Y
+            ↓
+ Outstanding = X - Y
+
+The customer may later pay an amount that effectively settles an older outstanding order.
+
+The business therefore needs to maintain historical order information while also maintaining the customer's overall outstanding balance.
+
+12. Customer Payment Behavior
+
+A customer may purchase several orders within a month.
+
+For example:
+
+January
+ ├── Order A
+ ├── Order B
+ └── Order C
+
+Payment received
+        ↓
+     ₹X
+
+February
+ ├── Order D
+ └── Order E
+
+Payment received
+        ↓
+     ₹Y
+
+The payment may not correspond to the most recent order.
+
+Therefore, SmartSilk must preserve the history of orders and payments, while the business continues to think in terms of the customer's outstanding amount.
+
+13. Customer Billing
+
+A bill is not necessarily generated immediately after every sale.
+
+The business maintains bills for its own filing.
+
+A customer may request a bill, particularly when they require it for GST/business purposes.
+
+When an order has effectively been fully settled, the corresponding bill can be generated.
+
+The bill may then be:
+
+Retained for business records.
+Shared with the customer when requested.
+
+Therefore:
+
+Order
+ ↓
+Credit
+ ↓
+Payments over time
+ ↓
+Order fully settled
+ ↓
+Bill prepared
+ ↓
+Customer requests?
+ ├── Yes → Share
+ └── No  → Keep for filing
+14. WhatsApp Requirement
+
+Currently, bills may need to be photographed/copied and sent manually through WhatsApp.
+
+This creates unnecessary manual work.
+
+The desired process is:
+
+Order fully settled
+       ↓
+Bill generated
+       ↓
+Digital copy
+       ↓
+WhatsApp
+       ↓
+Customer
+
+The system should eventually reduce the manual process involved in generating and transferring bills.
+
+15. Business Expenses
+
+Business money is also used for various expenses.
+
+The current practice is to maintain an expense ledger.
+
+A major requirement is to distinguish between:
+
+Business expenses
+
+Money spent for operating the business.
+
+Personal drawings
+
+Money taken from business funds for personal purposes.
+
+Both reduce available business cash, but they should be distinguishable for business analysis.
+
+16. Chit Fund Investments
+
+The business invests in multiple chit funds.
+
+Chit payments are made monthly.
+
+The business owner keeps track of these commitments and separates the required money from available business funds.
+
+The chit fund can eventually provide a lump-sum amount.
+
+That lump sum can be used for:
+
+Repaying short-term loans
+Paying outstanding business obligations
+Supporting business requirements
+Other investments
+
+Therefore, the chit fund is not simply a monthly expense.
+
+It represents a recurring financial commitment that can later produce a lump-sum inflow.
+
+17. Short-Term Loans
+
+When available business cash is insufficient for requirements such as:
+
+Purchasing raw silk
+Meeting chit-fund commitments
+Other urgent business requirements
+
+the business may take short-term loans.
+
+These loans involve interest.
+
+The business therefore needs to track:
+
+Loan
+ ↓
+Principal
+ ↓
+Interest obligation
+ ↓
+Repayment
+ ↓
+Remaining loan
+
+Chit-fund lump sums may subsequently be used to repay these loans.
+
+This creates an important relationship between:
+
+Cash availability
+      ↓
+Loan requirement
+      ↓
+Loan interest
+      ↓
+Chit maturity/lump sum
+      ↓
+Loan repayment
+18. Current Major Problems
+Problem 1 — Manual Ledger Maintenance
+
+Large numbers of transactions are recorded manually in ledger notebooks.
+
+This makes it difficult to:
+
+Search historical transactions.
+Understand the current position.
+Analyze trends.
+Quickly identify outstanding amounts.
+Connect related transactions.
+Problem 2 — Lack of Overall Business Visibility
+
+The business contains information about:
+
+Purchases
+Sales
+Payments
+Expenses
+Job work
+Investments
+Loans
+
+but the information is primarily maintained as records rather than as an integrated view.
+
+The owner therefore has to mentally combine different records to understand the current state.
+
+Problem 3 — Customer Outstanding Is Difficult to Analyze
+
+Customers can:
+
+Order frequently.
+Pay partially.
+Pay irregularly.
+Pay old outstanding amounts later.
+
+There is no fixed customer payment deadline.
+
+Therefore, manually understanding:
+
+"How much does this customer currently owe us?"
+
+and:
+
+"Which old transactions have effectively been settled?"
+
+can become difficult.
+
+Problem 4 — Supplier Payment Tracking
+
+Supplier credit periods vary.
+
+If payment is delayed beyond the agreed period, penalties may occur.
+
+Manual tracking creates the possibility of:
+
+Missing due dates.
+Delaying payments.
+Incurring penalties.
+Losing visibility of upcoming obligations.
+Problem 5 — Material Visibility
+
+The business needs to know:
+
+How much silk was purchased.
+How much silk is available.
+How much is being processed.
+How much is lost as wastage.
+How much becomes warp.
+How much is sold directly.
+How much is outsourced for job work.
+
+Currently, this information is not available as one integrated business view.
+
+Problem 6 — Production Visibility
+
+The warping process involves multiple stages:
+
+Yarn
+ ↓
+Rolling
+ ↓
+Wastage
+ ↓
+Roll
+ ↓
+Warping
+ ↓
+Warp
+
+Without structured tracking, it becomes difficult to understand:
+
+What is currently in process.
+What has completed rolling.
+What has reached warping.
+What has been completed.
+Where material loss occurs.
+Problem 7 — Cash-Flow Visibility
+
+Business money is simultaneously required for:
+
+Raw material purchases.
+Supplier payments.
+Customer-related operations.
+Expenses.
+Chit payments.
+Loan repayment.
+
+When cash is insufficient, short-term loans may be required.
+
+Therefore, the business needs better visibility into:
+
+Available cash
++
+Expected customer receipts
+-
+Supplier obligations
+-
+Chit commitments
+-
+Loan obligations
+-
+Business expenses
+Problem 8 — Investment and Loan Information Is Separate
+
+Chit funds and short-term loans affect the financial position of the business, but they are separate from ordinary sales and purchase transactions.
+
+Without an integrated view, it becomes difficult to understand the overall financial position.
+
+Problem 9 — Manual Bill Sharing
+
+Bills need to be prepared, copied/photographed and sent through WhatsApp.
+
+This becomes repetitive, particularly when customers are in different locations.
+
+19. Desired Business Transformation
+
+SmartSilk should transform the business from:
+
+Manual Records
+      ↓
+Separate Ledgers
+      ↓
+Owner manually interprets information
+      ↓
+Limited visibility
+
+into:
+
+Centralized Business Records
+          ↓
+Connected Transactions
+          ↓
+Automatic Calculations
+          ↓
+Reminders
+          ↓
+Business Dashboard
+          ↓
+Analysis
+          ↓
+Better Decisions
+20. Desired Business Visibility
+
+The primary dashboard should provide an immediate picture of the business.
+
+Material
+Silk Available
+Silk in Processing
+Warp Available
+Wastage
+Sales
+Orders
+Sales
+Customer Outstanding
+Payments Received
+Purchases
+Recent Purchases
+Supplier Payables
+Upcoming Due Payments
+Overdue Payments
+Finance
+Available Money
+Expenses
+Loans
+Loan Interest
+Chit Commitments
+Investments
+Reminders
+Supplier Due
+Supplier Overdue
+Chit Payment
+Loan Payment
+Other Important Business Events
+21. Long-Term Business Goal
+
+The ultimate objective is:
+
+Complete visibility of the business from raw-material purchase through production and sales to customer payments, supplier payments and overall financial position.
+
+The system should allow the business owner to understand not only what happened, but eventually:
+
+why it happened, where money/material is being lost, and where the business can improve.
+
+This creates the foundation for future analytical and AI capabilities.
+
+22. Future Analytical Capabilities
+
+AI is considered a future improvement, rather than the foundation of the core system.
+
+Potential future capabilities include:
+
+Business performance analysis.
+Cash-flow analysis.
+Identifying unusual expenses.
+Identifying material wastage.
+Customer payment behavior analysis.
+Supplier payment analysis.
+Loan/interest analysis.
+Investment analysis.
+Business trend analysis.
+Decision support.
+
+The important principle is:
+
+SmartSilk must first create reliable business data before AI can provide reliable analysis.
+
+23. Core Business Areas Identified
+
+At this stage, the business can be divided into these major areas:
+
+1. Supplier & Procurement
+2. Raw Silk Inventory
+3. Rolling
+4. Warping / Production
+5. Outsourced Job Work
+6. Customer Orders
+7. Sales
+8. Customer Payments
+9. Customer Outstanding
+10. Billing
+11. Expenses
+12. Personal Drawings
+13. Chit Fund Investments
+14. Short-Term Loans
+15. Cash / Financial Position
+16. Notifications & Reminders
+17. Business Analysis
+18. WhatsApp Communication
+24. What We Know vs What Is Still Unknown
+
+This distinction is important before we design the system.
+
+We know
+The business buys silk yarn.
+Purchases are generally on supplier credit.
+Supplier credit periods vary.
+Supplier overdue penalties can apply.
+Silk can be sold directly or converted into warp.
+Rolling produces wastage.
+Warping follows rolling.
+Job work can be outsourced.
+Job workers are paid based on warp produced.
+Customers have no fixed payment deadline.
+Customers can pay advances and partial amounts.
+Customer payments can happen irregularly.
+Customer outstanding is maintained as a running balance.
+Bills are maintained for filing.
+Customers may request bills for GST/business purposes.
+Bills may be shared through WhatsApp.
+Chit funds require monthly payments.
+Chits can provide lump-sum money.
+Short-term loans may be taken when cash is insufficient.
+Loans involve interest.
+Business expenses and personal drawings are recorded.
+The desired outcome is complete business visibility.
+Still to discover
+
+We haven't yet established things such as:
+
+Exact raw-silk inventory measurement rules.
+Exact rolling measurement rules.
+How wastage is currently measured.
+Exact warp measurement/format rules.
+How production progress is currently recorded.
+Exact job-work order lifecycle.
+How customer payments are currently recorded in the ledger.
+How the "oldest order becomes fully settled" rule is applied operationally.
+Exact supplier penalty calculation.
+Exact loan-interest calculation.
+Exact chit-fund lifecycle.
+How cash/bank balances are currently reconciled.
+GST/tax requirements beyond the customer's need for bills.
+Exact invoice contents.
+Who is allowed to perform each operation.
+What reports your father currently checks most frequently.
+
+These aren't problems with our analysis. These are the next discovery questions.

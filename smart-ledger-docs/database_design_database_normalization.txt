@@ -1,0 +1,1000 @@
+Step 7.2 — Database Normalization & Integrity
+
+Now that we have the ER model, we need to prove that the design is actually a good relational database design.
+
+The main goals are:
+
+Avoid duplicate data
+Avoid update anomalies
+Maintain referential integrity
+Keep historical business data correct
+Make queries efficient
+Handle concurrent transactions safely
+7.2.1 What is Normalization?
+
+Normalization is the process of organizing data so that:
+
+Each fact is stored in the right place, with minimum unnecessary duplication.
+
+The important normal forms for SmartSilk are:
+
+1NF → Atomic values
+2NF → No partial dependency
+3NF → No unnecessary transitive dependency
+
+For your project, 3NF is a good default target.
+
+We don't need to aggressively normalize everything if doing so makes the system unnecessarily complicated.
+
+7.2.2 First Normal Form — 1NF
+Rule
+
+Every column should contain an atomic value.
+
+Bad design:
+
+customer
+--------------------------------
+id
+name
+phone_numbers
+"9876543210, 8765432109"
+
+The phone column contains multiple values.
+
+Better:
+
+party
+----------------
+id
+name
+
+party_contacts
+----------------
+party_id
+phone
+
+However, if SmartSilk only needs one primary contact number for MVP, simply:
+
+phone = "9876543210"
+
+is perfectly fine.
+
+Another example
+
+Bad:
+
+purchase
+--------------------------------
+id
+supplier
+silk1_weight
+silk2_weight
+silk3_weight
+
+This assumes a fixed number of silk items.
+
+Better:
+
+purchase
+    │
+    └── purchase items / receipts
+
+or, given our current business model:
+
+purchase
+    │
+    └── material_receipts
+
+Each receipt contains one atomic quantity.
+
+7.2.3 1NF in SmartSilk
+
+Our design already follows 1NF:
+
+material_receipts
+-----------------------------
+id
+purchase_id
+received_weight_kg
+receipt_date
+
+instead of:
+
+received_weights
+"100,150,200"
+
+Similarly:
+
+order_items
+-----------------------------
+order_id
+product_type
+weight
+rate
+
+rather than:
+
+order
+-----------------------------
+silk_warp_weight
+kora_warp_weight
+vuda_warp_weight
+Why this matters
+
+You can now add:
+
+Order Item 4
+Order Item 5
+Order Item 6
+
+without changing the database schema.
+
+7.2.4 Second Normal Form — 2NF
+
+2NF mainly becomes important when a table has a composite primary key.
+
+Consider:
+
+production_order_items
+--------------------------------
+production_batch_id
+order_item_id
+allocated_weight
+
+Primary key:
+
+(production_batch_id, order_item_id)
+
+allocated_weight depends on the combination of the two IDs.
+
+That's good.
+
+But imagine we stored:
+
+order_customer_id
+order_date
+production_date
+allocated_weight
+
+Now:
+
+order_customer_id
+
+depends only on:
+
+order_item_id
+
+not the complete composite key.
+
+That creates a partial dependency.
+
+So we keep:
+
+production_order_items
+----------------------------
+production_batch_id
+order_item_id
+allocated_weight
+
+and obtain customer/order information through:
+
+order_item
+   ↓
+customer_order
+   ↓
+customer
+7.2.5 Third Normal Form — 3NF
+
+The simple way to remember 3NF:
+
+A non-key attribute should depend on the key, the whole key, and nothing but the key.
+
+Consider:
+
+supplier
+-------------------------
+id
+name
+credit_days
+
+That's okay if credit days represent the supplier's default terms.
+
+But suppose we put:
+
+purchase
+-------------------------
+id
+supplier_id
+supplier_name
+supplier_phone
+supplier_address
+
+This is bad.
+
+Why?
+
+Because:
+
+purchase_id
+    ↓
+supplier_id
+    ↓
+supplier_name
+supplier_phone
+supplier_address
+
+Supplier information depends on supplier_id, not directly on the purchase.
+
+So:
+
+purchases
+----------------
+id
+supplier_id
+
+and:
+
+parties
+----------------
+id
+name
+phone
+address
+
+is better.
+
+7.2.6 Why Duplication Is Dangerous
+
+Imagine Supplier X's phone number is:
+
+9876543210
+
+If we store it in 50 purchases:
+
+PUR001 → 9876543210
+PUR002 → 9876543210
+PUR003 → 9876543210
+...
+
+Then the supplier changes their number.
+
+We now have to update 50 rows.
+
+If one is missed:
+
+PUR001 → 9876543210
+PUR002 → 9876543210
+PUR003 → 9123456789
+
+Which one is correct?
+
+That's an update anomaly.
+
+With normalization:
+
+purchase
+   ↓
+supplier_id
+   ↓
+party
+   ↓
+phone
+
+There is one source of truth.
+
+7.2.7 Three Classic Database Anomalies
+
+You should know these for interviews.
+
+1. Update anomaly
+
+Same fact stored in multiple places.
+
+Changing it requires multiple updates.
+
+2. Insert anomaly
+
+You cannot insert one fact without unrelated information.
+
+Example:
+
+You want to add a new supplier but haven't purchased anything yet.
+
+Bad design:
+
+purchases
+
+cannot represent the supplier independently.
+
+Our design solves this:
+
+parties
+   ↓
+supplier exists independently
+3. Delete anomaly
+
+Deleting one transaction accidentally removes the only record of a supplier/customer.
+
+Our design prevents this because:
+
+Party
+
+has an independent lifecycle.
+
+7.2.8 But Should We Normalize Everything?
+
+No.
+
+This is an important engineering lesson.
+
+You don't normalize just because a textbook says:
+
+"More normalization = better."
+
+For example, suppose we have:
+
+order_items
+------------------
+quantity
+rate
+amount
+
+Technically:
+
+amount = quantity × rate
+
+So we could argue amount is derived.
+
+Should we remove it?
+
+Not necessarily.
+
+Because historical financial values matter.
+
+If the order was:
+
+100 kg × ₹850 = ₹85,000
+
+we want the actual agreed amount to remain stable.
+
+Therefore:
+
+rate
+amount
+
+can be retained as historical transaction data.
+
+This is an important distinction:
+
+Redundant data is not automatically bad if it represents an intentional historical snapshot.
+
+7.2.9 Historical Data vs Derived Data
+
+This distinction is critical for SmartSilk.
+
+Don't store derived current values unnecessarily
+
+For example:
+
+customer_outstanding
+
+should generally be calculated from:
+
+orders
++
+payments
++
+allocations
++
+refunds/adjustments
+
+because otherwise:
+
+orders say ₹1,00,000
+customer_outstanding says ₹70,000
+
+and you don't know which is correct.
+
+But preserve historical values
+
+Example:
+
+Purchase:
+100 kg
+Rate: ₹750/kg
+
+Later supplier changes rate to:
+
+₹800/kg
+
+The old purchase must still say:
+
+₹750/kg
+
+So historical rates are stored.
+
+7.2.10 Functional Dependencies
+
+This is the theoretical foundation behind normalization.
+
+Example:
+
+purchase_id → supplier_id
+
+One purchase belongs to one supplier.
+
+And:
+
+supplier_id → supplier_name
+
+Therefore:
+
+purchase_id → supplier_name
+
+But we don't store supplier_name in purchase.
+
+Instead:
+
+purchase_id
+     ↓
+supplier_id
+     ↓
+supplier_name
+
+This is exactly why normalization prevents transitive dependencies.
+
+7.2.11 SmartSilk Dependency Examples
+Party
+party_id → name, phone, address, status
+Purchase
+purchase_id → supplier_id, purchase_date, ordered_weight, rate
+Material Receipt
+receipt_id → purchase_id, receipt_date, received_weight
+Customer Order
+order_id → customer_id, order_date, required_date, status
+Order Item
+order_item_id → order_id, product_type, weight, rate
+Payment
+payment_id → party_id, amount, method, date
+Financial Transaction
+transaction_id → account_id, amount, direction, type, date
+
+This tells us that the tables are correctly separating different facts.
+
+7.2.12 Referential Integrity
+
+Normalization isn't enough.
+
+We also need to make sure relationships cannot become invalid.
+
+Suppose:
+
+purchase.supplier_id = 123
+
+but supplier 123 doesn't exist.
+
+That's an invalid database state.
+
+So:
+
+purchases.supplier_id
+        │
+        ▼
+parties.id
+
+must be a foreign key.
+
+PostgreSQL then protects the relationship.
+
+7.2.13 Example: Invalid Payment
+
+Suppose someone tries:
+
+payment
+party_id = 999999
+
+but party 999999 doesn't exist.
+
+The database should reject it.
+
+This is why:
+
+Database constraints are not optional validation.
+
+Application validation and database constraints should work together.
+
+7.2.14 Application Validation vs Database Constraints
+
+This distinction is important.
+
+Application layer
+
+Can check:
+
+Is the purchase fully received?
+Is the supplier active?
+Is the order already locked?
+Is this Vuda Warp?
+Is there enough raw silk?
+Database layer
+
+Should enforce:
+
+Foreign keys
+Unique values
+Positive amounts
+Valid enum-like values
+Not-null requirements
+
+Think:
+
+Application
+   ↓
+Business rules
+
+Database
+   ↓
+Data integrity
+
+Neither should completely replace the other.
+
+7.2.15 Inventory Integrity
+
+Inventory is the most dangerous part of SmartSilk.
+
+Suppose stock is:
+
+100 kg
+
+Two users simultaneously try to consume:
+
+80 kg
+Without concurrency control
+
+Both requests may see:
+
+100 kg available
+
+Both proceed.
+
+Result:
+
+100 - 80 - 80
+= -60 kg
+
+That's unacceptable.
+
+7.2.16 How We Prevent This
+
+The operation:
+
+Check stock
++
+Create movement
+
+must happen in one database transaction.
+
+Conceptually:
+
+BEGIN TRANSACTION
+
+Check available stock
+
+Lock relevant inventory state
+
+Validate quantity
+
+Create material movement
+
+COMMIT
+
+If another transaction tries to modify the same stock concurrently, it must wait/retry/fail according to our locking strategy.
+
+We'll design the exact mechanism later in the backend transaction section.
+
+7.2.17 Why "Stock = SUM(Movements)" Can Become Expensive
+
+Initially:
+
+stock = SUM(material_movements)
+
+is perfectly reasonable.
+
+Suppose we have:
+
++500
+-100
++200
+-50
+
+Current stock:
+
+550 kg
+
+But after years:
+
+5 million movements
+
+calculating every time becomes expensive.
+
+For MVP:
+
+Keep material_movements as the source of truth.
+
+Later, if profiling shows the need:
+
+inventory_balance
+
+can be introduced as a derived/cache table.
+
+But it must never become an uncontrolled second source of truth.
+
+7.2.18 Same Principle for Finance
+
+Don't simply store:
+
+cash_balance = ₹3,50,000
+
+and manually update it everywhere.
+
+Instead:
+
+financial_transactions
+        ↓
+calculate account balance
+
+For example:
+
+Cash
+
++ ₹50,000 customer payment
+- ₹20,000 supplier payment
+- ₹5,000 expense
++ ₹10,000 transfer
+
+Balance:
+
+₹35,000
+
+The transactions explain why the balance is ₹35,000.
+
+7.2.19 Indexing
+
+Now we move from correctness to performance.
+
+A database index is like an index in a textbook.
+
+Without an index:
+
+Search through many rows
+
+With an index:
+
+Jump directly toward matching rows
+
+But indexes aren't free.
+
+They consume:
+
+storage
+write time
+memory
+
+So don't index every column.
+
+7.2.20 SmartSilk Indexes
+Parties
+party_code
+phone
+party_type
+status
+
+Useful because we frequently search customers/suppliers.
+
+Purchases
+supplier_id
+purchase_date
+status
+due_date
+
+Queries:
+
+Show this supplier's purchases.
+
+Show overdue purchases.
+
+Material Receipts
+purchase_id
+receipt_date
+Material Movements
+product_type
+movement_date
+movement_type
+reference_id
+
+Potentially:
+
+(from_location, to_location)
+
+depending on query patterns.
+
+Orders
+customer_id
+status
+required_date
+
+Very important dashboard queries:
+
+pending orders
+overdue orders
+customer orders
+Order Items
+order_id
+product_type
+status
+Payments
+party_id
+payment_date
+Financial Transactions
+financial_account_id
+transaction_date
+transaction_type
+
+This is especially important for:
+
+"Show all transactions for Bank Account A in August."
+
+7.2.21 Composite Indexes
+
+Sometimes multiple columns are queried together.
+
+Example:
+
+orders
+WHERE customer_id = ?
+AND status = 'PENDING'
+
+An index like:
+
+(customer_id, status)
+
+can help.
+
+But don't blindly create dozens of composite indexes.
+
+The correct approach is:
+
+Identify important queries
+Check execution plans
+Add indexes
+Measure again
+
+That's real production database optimization.
+
+7.2.22 Unique Constraints Are Also Indexes
+
+For example:
+
+purchase_number UNIQUE
+
+PostgreSQL creates an index to enforce uniqueness.
+
+So you don't need:
+
+UNIQUE(purchase_number)
+INDEX(purchase_number)
+
+as separate concepts unnecessarily.
+
+7.2.23 Database Transactions
+
+Now connect the database design to our architecture.
+
+Consider:
+
+Receive 300 kg silk
+
+The operation changes multiple things:
+
+Material Receipt
+      +
+Material Movement
+      +
+Purchase received status
+
+These must succeed together.
+
+Bad:
+
+Receipt created ✓
+Movement failed ✗
+Purchase updated ✓
+
+Now the database says the material was received, but inventory doesn't contain it.
+
+Instead:
+
+BEGIN
+
+Create receipt
+Create inventory movement
+Update purchase state
+
+COMMIT
+
+If anything fails:
+
+ROLLBACK
+
+Everything returns to the previous state.
+
+7.2.24 Another Example: Customer Payment
+
+One business operation:
+
+Customer pays ₹50,000
+
+may create:
+
+Payment
+Payment Allocation
+Financial Transaction
+
+These must be atomic.
+
+BEGIN
+
+Create Payment
+Create Allocation
+Create Financial Transaction
+
+COMMIT
+
+Not:
+
+Payment ✓
+Allocation ✓
+Financial transaction ✗
+
+Otherwise the customer appears to have paid but the bank balance hasn't changed.
+
+7.2.25 ACID
+
+SmartSilk heavily depends on ACID.
+
+Atomicity
+
+All related changes happen or none happen.
+
+Consistency
+
+Database rules remain valid.
+
+Isolation
+
+Concurrent operations don't corrupt each other.
+
+Durability
+
+Committed data survives failures.
+
+For your project, you should be able to explain:
+
+"Financial and inventory operations are implemented as transactional use cases because a single business action may update multiple tables and those updates must remain atomic."
+
+That's a very strong interview answer.
+
+7.2.26 One Important Decision: Don't Over-Normalize
+
+For example, imagine we create:
+
+party
+party_contact
+party_address
+party_role
+party_phone
+party_email
+party_type
+party_status
+party_metadata
+
+just because we can.
+
+That's technically sophisticated but terrible for a 1-month project.
+
+You would end up with:
+
+Simple customer lookup
+       ↓
+7 JOINs
+
+Our goal is:
+
+Normalize meaningful relationships, not create abstraction for its own sake.
+
+For SmartSilk:
+
+3NF-ish relational design
++
+intentional historical snapshots
++
+derived values
++
+strong FK constraints
+
+is the right balance.
+
+7.2.27 Final Integrity Rules
+
+At this point, your database design should follow these principles:
+
+Identity
+UUID primary keys
++
+human-readable business numbers
+Money
+DECIMAL
+
+Never:
+
+FLOAT
+DOUBLE
+
+for financial amounts.
+
+Weight
+DECIMAL
+
+because silk quantities can require precision.
+
+Relationships
+Foreign keys
+Historical data
+Never silently recalculate historical rates
+Transactions
+ACID
+
+for financial/inventory operations.
+
+Deletion
+Avoid hard delete of business transactions
+Inventory
+Movement-based source of truth
+Finance
+Financial transaction ledger
+Outstanding
+Derived from obligations + allocations
+Concurrency
+Lock/coordinate critical inventory and financial operations
+7.2.28 Final Mental Model
+
+The database should ultimately behave like this:
+
+                 SMARTSILK DATABASE
+                        │
+       ┌────────────────┼─────────────────┐
+       │                │                 │
+       ▼                ▼                 ▼
+    PARTIES          BUSINESS          FINANCE
+       │              EVENTS              │
+       │                │                 │
+       ├── Customer     ├── Purchase      ├── Payment
+       ├── Supplier     ├── Receipt       ├── Allocation
+       ├── Worker       ├── Order         ├── Expense
+       └── Manufacturer ├── Production    ├── Loan
+                        ├── Outsourcing   ├── Chit
+                        └── Work          └── Transfer
+                               │
+                               ▼
+                     MATERIAL MOVEMENTS
+                               │
+                               ▼
+                         INVENTORY
+
+The key idea is:
+
+Tables store facts. Transactions change facts. Derived values explain the current state.
+
+Step 7.2 is complete.
+

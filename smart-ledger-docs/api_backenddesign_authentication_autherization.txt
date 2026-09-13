@@ -1,0 +1,705 @@
+Step 8.8 — Authentication, Authorization & Security
+
+Now we're designing how SmartSilk users securely access the backend.
+
+This is still the final planning/design stage. After this, we'll move toward implementation.
+
+8.8.1 Authentication vs Authorization
+
+These are different.
+
+Authentication
+
+Who are you?
+
+Example:
+
+Username: owner
+Password: ********
+
+Backend verifies the credentials.
+
+Authorization
+
+What are you allowed to do?
+
+For example:
+
+Owner
+ ├── Create Purchase
+ ├── Record Payment
+ ├── View Reports
+ └── Manage Users
+
+Staff
+ ├── Create Order
+ ├── View Inventory
+ └── Record Work
+
+So:
+
+Authentication → Identity
+Authorization  → Permissions
+8.8.2 SmartSilk security architecture
+
+We'll use:
+
+Spring Security
+JWT access tokens
+Refresh tokens
+Password hashing
+Role/permission-based authorization
+HTTPS in deployment
+Audit information
+
+Flow:
+
+Kotlin App
+    │
+    │ username + password
+    ▼
+POST /api/v1/auth/login
+    │
+    ▼
+Spring Security
+    │
+    ├── Verify password
+    ├── Identify user
+    └── Determine permissions
+    │
+    ▼
+Access Token + Refresh Token
+
+Then future requests:
+
+Kotlin
+   │
+   │ Authorization: Bearer <access-token>
+   ▼
+Spring Security
+   │
+   ├── Verify token
+   ├── Identify user
+   └── Check permission
+   ▼
+Controller
+8.8.3 JWT
+
+JWT = JSON Web Token.
+
+The frontend receives an access token after login.
+
+Conceptually:
+
+LOGIN
+ ↓
+JWT
+ ↓
+Authorization: Bearer JWT
+
+The backend can determine:
+
+userId
+roles
+permissions
+token expiry
+
+without asking the database for the user's password on every request.
+
+8.8.4 Access token vs refresh token
+
+Don't make the access token live for an extremely long time.
+
+Instead:
+
+Access Token
+→ short-lived
+
+Refresh Token
+→ longer-lived
+
+Example conceptually:
+
+Access token → 15 minutes
+Refresh token → several days
+
+The exact values can be decided during implementation/deployment.
+
+Flow:
+
+Login
+  ↓
+Access Token
+Refresh Token
+  ↓
+Access token expires
+  ↓
+POST /auth/refresh
+  ↓
+New Access Token
+
+This limits the damage if an access token is stolen.
+
+8.8.5 Login API
+POST /api/v1/auth/login
+
+Request:
+
+{
+  "username": "owner",
+  "password": "********"
+}
+
+Response conceptually:
+
+{
+  "accessToken": "...",
+  "refreshToken": "...",
+  "expiresIn": 900
+}
+
+Don't return:
+
+password
+passwordHash
+
+ever.
+
+8.8.6 Password storage
+
+Never store:
+
+password = "mypassword123"
+
+in PostgreSQL.
+
+Instead:
+
+Password
+   ↓
+Strong password hashing algorithm
+   ↓
+Password hash
+   ↓
+Database
+
+Spring Security supports secure password hashing mechanisms such as BCrypt.
+
+When logging in:
+
+Entered password
+      ↓
+Hash verification
+      ↓
+Stored hash
+
+The original password is never stored.
+
+8.8.7 User model
+
+We haven't included application users in the business parties table.
+
+That's intentional.
+
+A customer is not automatically a system user.
+
+For example:
+
+Party
+ ├── Customer
+ ├── Supplier
+ ├── Manufacturer
+ └── Worker
+
+while:
+
+Application User
+ ├── username
+ ├── password hash
+ ├── role
+ └── status
+
+A business owner could be both:
+
+Party
++
+Application User
+
+but those are conceptually different things.
+
+8.8.8 Roles
+
+For MVP, don't create 30 roles.
+
+Start simple.
+
+For example:
+
+OWNER
+STAFF
+
+Potentially:
+
+ADMIN
+OWNER
+STAFF
+
+depending on how your actual user model develops.
+
+8.8.9 Roles vs permissions
+
+This is an important design decision.
+
+Instead of writing everywhere:
+
+if role == OWNER
+
+prefer permissions.
+
+Example:
+
+PURCHASE_CREATE
+PURCHASE_VIEW
+
+ORDER_CREATE
+ORDER_VIEW
+
+PAYMENT_CREATE
+PAYMENT_VIEW
+
+EXPENSE_CREATE
+
+REPORT_VIEW
+
+USER_MANAGE
+
+Then:
+
+OWNER
+   ↓
+PURCHASE_CREATE
+PAYMENT_CREATE
+EXPENSE_CREATE
+REPORT_VIEW
+...
+
+And:
+
+STAFF
+   ↓
+ORDER_CREATE
+ORDER_VIEW
+INVENTORY_VIEW
+
+This gives you flexibility later.
+
+8.8.10 Why not overdo permissions now?
+
+You don't need:
+
+PURCHASE_CREATE_RAW_SILK
+PURCHASE_CREATE_SPECIAL_SILK
+PURCHASE_EDIT_RATE
+PURCHASE_EDIT_SUPPLIER
+...
+
+for your MVP.
+
+Start with meaningful business permissions.
+
+You can refine them later if real requirements appear.
+
+8.8.11 Protecting endpoints
+
+Conceptually:
+
+POST /api/v1/purchases
+        ↓
+PURCHASE_CREATE permission
+GET /api/v1/reports/production
+        ↓
+REPORT_VIEW permission
+POST /api/v1/users
+        ↓
+USER_MANAGE permission
+
+Spring Security should enforce this on the backend.
+
+8.8.12 Frontend hiding ≠ security
+
+Suppose Kotlin hides:
+
+"Delete Payment"
+
+from staff.
+
+That is useful for UX.
+
+But it isn't security.
+
+A malicious user can still manually send an HTTP request.
+
+Therefore:
+
+Frontend
+→ convenience
+
+Backend
+→ actual security
+
+Always.
+
+8.8.13 Financial security
+
+SmartSilk handles sensitive financial data.
+
+Therefore some operations need additional protection.
+
+For example:
+
+Record payment
+Record expense
+Record loan
+Record chit transaction
+Reverse transaction
+
+These should have:
+
+authorization
+validation
+audit information
+transaction boundaries
+idempotency where applicable
+8.8.14 Audit trail
+
+You should know:
+
+Who performed an important operation?
+
+For example:
+
+Payment PAY-2026-0045
+Amount: ₹50,000
+Created by: user-123
+Created at: 2026-09-11 19:30
+
+This is why we've repeatedly included:
+
+created_at
+updated_at
+created_by
+updated_by
+
+where appropriate.
+
+For critical financial/inventory operations, eventually you can maintain a stronger audit trail.
+
+8.8.15 Don't allow financial history to be casually edited
+
+Suppose:
+
+PAY-001
+₹50,000
+
+was incorrectly entered.
+
+Don't simply:
+
+UPDATE payment
+SET amount = 40,000
+
+without preserving history.
+
+Prefer a correction/reversal process.
+
+Conceptually:
+
+Original Payment
+       ↓
+Reversal / Correction
+       ↓
+Corrected transaction
+
+This gives you traceability.
+
+8.8.16 JWT claims
+
+A JWT may conceptually contain:
+
+sub = user ID
+roles = [...]
+permissions = [...]
+iat = issued time
+exp = expiration
+
+Don't put sensitive information inside the token.
+
+For example, don't put:
+
+bank account details
+password
+financial balances
+
+JWT is not a database.
+
+8.8.17 Token storage in Kotlin
+
+This is something we'll handle carefully during implementation.
+
+The general principle is:
+
+Don't store authentication tokens in an insecure plain-text location.
+
+On Android, use secure platform-backed storage mechanisms.
+
+We'll decide the exact implementation when we build the Kotlin authentication layer.
+
+8.8.18 Refresh token security
+
+Refresh tokens are more powerful because they can generate new access tokens.
+
+Therefore:
+
+Access Token
+→ short-lived
+
+Refresh Token
+→ protected carefully
+
+For a production implementation, refresh-token rotation/revocation is worth considering.
+
+For your one-month MVP, don't build an enormous identity platform.
+
+Implement:
+
+Login
+Refresh
+Logout/revocation strategy
+Password hashing
+JWT validation
+Authorization
+
+correctly.
+
+8.8.19 Authentication flow
+
+Full flow:
+
+                 LOGIN
+                   │
+                   ▼
+            Spring Security
+                   │
+           Verify credentials
+                   │
+                   ▼
+            Generate tokens
+                   │
+           ┌───────┴───────┐
+           ▼               ▼
+      Access Token    Refresh Token
+           │
+           ▼
+        Kotlin
+
+Then:
+
+Kotlin
+  │
+  │ Bearer Access Token
+  ▼
+Spring Security Filter
+  │
+  ├── Token valid?
+  │
+  ├── Token expired?
+  │
+  └── User authenticated?
+  │
+  ▼
+Authorization
+  │
+  ├── Permission allowed?
+  │
+  ▼
+Controller
+8.8.20 What happens with an expired token?
+
+Example:
+
+GET /api/v1/inventory/summary
+
+returns:
+
+401 Unauthorized
+
+The Kotlin client can then:
+
+Access token expired
+       ↓
+POST /auth/refresh
+       ↓
+Receive new access token
+       ↓
+Retry original request
+
+If refresh also fails:
+
+Logout
+↓
+Return to login
+8.8.21 401 vs 403
+
+Interview question.
+
+401 Unauthorized
+
+Means:
+
+You aren't authenticated.
+
+Examples:
+
+Missing token
+Invalid token
+Expired token
+403 Forbidden
+
+Means:
+
+We know who you are, but you aren't allowed to perform this operation.
+
+Example:
+
+Staff
+  ↓
+POST /expenses
+  ↓
+403 FORBIDDEN
+
+if staff lacks the required permission.
+
+Remember:
+
+401 → Who are you?
+403 → I know who you are, but no.
+8.8.22 Security boundary
+
+The architecture becomes:
+
+Internet / Kotlin
+        ↓
+   HTTPS
+        ↓
+Spring Security
+        ↓
+Authentication
+        ↓
+Authorization
+        ↓
+REST Controller
+        ↓
+Application Service
+        ↓
+Domain
+        ↓
+Database
+
+Security should happen before business operations are executed.
+
+8.8.23 SmartSilk security checklist
+
+Before implementation is considered complete:
+
+Authentication
+ Login
+ Password hashing
+ JWT access token
+ Refresh token
+ Logout/revocation strategy
+ Expiration handling
+Authorization
+ Roles
+ Permissions
+ Endpoint protection
+ Backend enforcement
+Data protection
+ HTTPS
+ No passwords in logs
+ No tokens in logs
+ Sensitive configuration through environment variables
+ Database credentials outside source code
+Business protection
+ Financial operations authenticated
+ Inventory operations authenticated
+ Audit information
+ No casual deletion of financial history
+ Idempotency for retry-sensitive operations
+8.8.24 What we are NOT building
+
+Again, don't overengineer.
+
+We're not building:
+
+OAuth authorization server
+SSO platform
+Keycloak cluster
+Multi-region identity infrastructure
+Zero-trust enterprise IAM
+
+For SmartSilk MVP:
+
+Spring Security
++
+JWT
++
+Secure password hashing
++
+Roles/permissions
++
+Audit
+
+is appropriate.
+
+8.8.25 Final security architecture
+
+Your SmartSilk backend should conceptually look like:
+
+                  KOTLIN
+                     │
+                     │ HTTPS
+                     ▼
+             ┌───────────────┐
+             │ Spring        │
+             │ Security      │
+             └───────┬───────┘
+                     │
+             JWT Authentication
+                     │
+             Permission Check
+                     │
+                     ▼
+             REST Controllers
+                     │
+                     ▼
+             Application Services
+                     │
+                     ▼
+               Domain Rules
+                     │
+                     ▼
+                PostgreSQL
+Step 8.8 is now complete
+
+At this point we've designed:
+
+8.1 Backend architecture
+8.2 Controllers
+8.3 Application services
+8.4 Domain services/rules
+8.5 Repositories/JPA
+8.6 REST API
+8.7 DTOs/validation/errors
+8.8 Authentication/authorization
+
+And this is a good point to stop adding theory.

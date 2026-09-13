@@ -1,0 +1,1052 @@
+Step 7.3 — Exact Database Schema Design
+
+Now we move from the ER model to the actual PostgreSQL design.
+
+At the end of this step, you should be able to look at any SmartSilk entity and answer:
+
+What table is it? What columns does it have? What type are they? What constraints protect it?
+
+We will design this before writing JPA entities, because the database should be driven by the domain model, not accidentally shaped by Java classes.
+
+7.3.1 Database Naming Convention
+
+Let's establish this first.
+
+Tables
+
+Use:
+
+snake_case
+
+Examples:
+
+parties
+customer_orders
+order_items
+material_movements
+financial_transactions
+
+Not:
+
+CustomerOrder
+Customer_Order
+customerOrder
+Columns
+
+Also:
+
+snake_case
+
+Examples:
+
+customer_id
+order_date
+created_at
+updated_at
+Primary key
+
+Every table:
+
+id
+Foreign key
+
+Always:
+
+<entity>_id
+
+Examples:
+
+customer_id
+supplier_id
+purchase_id
+order_item_id
+
+This makes the schema predictable.
+
+7.3.2 UUID Strategy
+
+For SmartSilk, use UUIDs as internal identifiers.
+
+Example:
+
+id = 550e8400-e29b-41d4-a716-446655440000
+
+But users shouldn't have to see that.
+
+Therefore we have two identities:
+
+Internal identity
+       ↓
+UUID
+
+Business identity
+       ↓
+PUR-2026-0001
+ORD-2026-0015
+PAY-2026-0032
+Why?
+
+UUID:
+
+difficult to guess
+safe for APIs
+good for distributed systems later
+avoids exposing sequential database IDs
+
+Business number:
+
+human-friendly
+useful for phone/WhatsApp
+useful on bills
+easy for your father to say/write
+7.3.3 Common Audit Columns
+
+Most major tables should contain:
+
+id
+created_at
+updated_at
+
+Potentially:
+
+created_by
+updated_by
+
+For example:
+
+parties
+-------------------------
+id
+party_code
+name
+phone
+status
+created_at
+updated_at
+
+For transactional systems, audit information is extremely useful.
+
+7.3.4 PostgreSQL Data Types
+
+These choices matter.
+
+Money
+
+Use:
+
+NUMERIC(14,2)
+
+Example:
+
+₹1,25,000.50
+
+Never use:
+
+FLOAT
+DOUBLE
+REAL
+
+for money.
+
+Weight
+
+Use something such as:
+
+NUMERIC(12,3)
+
+This allows:
+
+100.500 kg
+
+If your business consistently requires more precision, we can increase it.
+
+IDs
+UUID
+Dates
+
+Business date:
+
+DATE
+
+Example:
+
+purchase_date
+order_date
+payment_date
+Timestamp
+
+Use:
+
+TIMESTAMPTZ
+
+for system timestamps:
+
+created_at
+updated_at
+sent_at
+
+This is better than blindly using TIMESTAMP because timezone information matters for systems that may later be deployed elsewhere.
+
+7.3.5 Table 1 — parties
+
+This is the foundation of the people/business side.
+
+parties
+----------------------------------
+id                  UUID PK
+party_code          VARCHAR UNIQUE
+name                VARCHAR NOT NULL
+party_type          VARCHAR NOT NULL
+phone               VARCHAR
+address             TEXT
+status              VARCHAR NOT NULL
+created_at          TIMESTAMPTZ
+updated_at          TIMESTAMPTZ
+
+Possible party_type:
+
+CUSTOMER
+SUPPLIER
+MANUFACTURER
+WORKER
+
+Possible status:
+
+ACTIVE
+INACTIVE
+Important
+
+Don't make phone unique.
+
+Two customers may legitimately share a phone number.
+
+7.3.6 Table 2 — purchases
+purchases
+----------------------------------
+id                  UUID PK
+purchase_number     VARCHAR UNIQUE
+supplier_id         UUID FK
+purchase_date       DATE
+ordered_weight_kg   NUMERIC(12,3)
+rate_per_kg         NUMERIC(14,2)
+payment_type        VARCHAR
+credit_days         INTEGER
+due_date            DATE
+status              VARCHAR
+notes               TEXT
+created_at          TIMESTAMPTZ
+updated_at          TIMESTAMPTZ
+
+Constraints:
+
+ordered_weight_kg > 0
+rate_per_kg >= 0
+credit_days >= 0
+
+Relationship:
+
+parties 1 ───── N purchases
+
+where the party must be a supplier.
+
+That last rule is primarily an application/domain validation because the generic parties table allows multiple party types.
+
+7.3.7 Table 3 — material_receipts
+material_receipts
+----------------------------------
+id                    UUID PK
+receipt_number        VARCHAR UNIQUE
+purchase_id           UUID FK
+receipt_date          DATE
+received_weight_kg    NUMERIC(12,3)
+accepted_weight_kg    NUMERIC(12,3)
+rejected_weight_kg    NUMERIC(12,3)
+notes                 TEXT
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+Constraint:
+
+received_weight_kg >= 0
+accepted_weight_kg >= 0
+rejected_weight_kg >= 0
+
+Business invariant:
+
+accepted + rejected <= received
+
+This is something we should enforce at the application level and potentially with a database CHECK constraint.
+
+7.3.8 Table 4 — material_movements
+
+This is one of the core tables.
+
+material_movements
+----------------------------------
+id                    UUID PK
+movement_number       VARCHAR UNIQUE
+product_type          VARCHAR
+movement_type         VARCHAR
+quantity_kg           NUMERIC(12,3)
+from_location        VARCHAR
+to_location          VARCHAR
+movement_date         DATE
+reference_type        VARCHAR
+reference_id          UUID
+notes                 TEXT
+created_at            TIMESTAMPTZ
+created_by            UUID
+
+Examples:
+
+Receipt
+movement_type = RECEIPT
+
+from = SUPPLIER
+to   = WAREHOUSE
+
+quantity = 300 kg
+Production consumption
+movement_type = CONSUMPTION
+
+from = WAREHOUSE
+to   = INTERNAL_WIP
+
+quantity = 100 kg
+Outsourcing
+movement_type = OUTSOURCE_ISSUE
+
+from = WAREHOUSE
+to   = EXTERNAL_WIP
+
+quantity = 200 kg
+Outsourcing receipt
+movement_type = OUTSOURCE_RECEIPT
+
+from = EXTERNAL_WIP
+to   = FINISHED_STOCK
+
+quantity = 185 kg
+7.3.9 One Important Decision About reference_id
+
+You may notice:
+
+reference_type
+reference_id
+
+doesn't have a real FK.
+
+For example:
+
+reference_type = "PURCHASE"
+reference_id = <purchase UUID>
+
+PostgreSQL cannot enforce:
+
+reference_id must exist in purchases.
+
+This is called a polymorphic reference.
+
+For material_movements, this is acceptable for the MVP because a movement may originate from:
+
+purchase
+production
+outsourcing
+order
+return
+adjustment
+
+Trying to create separate nullable foreign keys for every possible source would make the table ugly.
+
+But for critical settlement relationships such as payment allocation, we'll use explicit FKs.
+
+7.3.10 Table 5 — customer_orders
+customer_orders
+----------------------------------
+id                  UUID PK
+order_number        VARCHAR UNIQUE
+customer_id         UUID FK
+order_date          DATE
+required_date       DATE
+status              VARCHAR
+locked              BOOLEAN
+notes               TEXT
+created_at          TIMESTAMPTZ
+updated_at          TIMESTAMPTZ
+
+Relationship:
+
+Customer 1 ───── N Orders
+
+Important:
+
+locked = true
+
+once production begins.
+
+But don't rely only on the locked boolean.
+
+The domain service should also enforce:
+
+An order that has entered production cannot be freely modified.
+
+7.3.11 Table 6 — order_items
+order_items
+----------------------------------
+id                    UUID PK
+order_id              UUID FK
+product_type          VARCHAR
+required_weight_kg    NUMERIC(12,3)
+warp_specification    TEXT
+rate_per_kg           NUMERIC(14,2)
+amount                NUMERIC(14,2)
+status                VARCHAR
+notes                 TEXT
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+Example:
+
+Order ORD001
+
+Item 1:
+SILK_WARP
+100 kg
+₹850/kg
+
+Item 2:
+KORA_WARP
+50 kg
+₹700/kg
+
+This is why order_items exists separately.
+
+7.3.12 Table 7 — production_batches
+production_batches
+----------------------------------
+id                    UUID PK
+batch_number          VARCHAR UNIQUE
+production_date       DATE
+product_type          VARCHAR
+input_weight_kg       NUMERIC(12,3)
+output_weight_kg      NUMERIC(12,3)
+wastage_weight_kg     NUMERIC(12,3)
+status                VARCHAR
+notes                 TEXT
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+Core production invariant:
+
+input =
+output
++
+wastage
++
+approved_discrepancy
+
+We may eventually add:
+
+discrepancy_weight_kg
+
+if your father's actual production process needs it.
+
+Don't add it merely because it is theoretically possible.
+
+7.3.13 Table 8 — production_order_items
+
+Junction table:
+
+production_order_items
+----------------------------------
+production_batch_id    UUID FK
+order_item_id          UUID FK
+allocated_weight_kg    NUMERIC(12,3)
+
+Primary key:
+
+(production_batch_id, order_item_id)
+
+This is a true many-to-many relationship.
+
+7.3.14 Table 9 — outsourcing_jobs
+outsourcing_jobs
+----------------------------------
+id                    UUID PK
+job_number            VARCHAR UNIQUE
+manufacturer_id       UUID FK
+product_type          VARCHAR
+issued_weight_kg      NUMERIC(12,3)
+received_weight_kg    NUMERIC(12,3)
+wastage_weight_kg     NUMERIC(12,3)
+issue_date            DATE
+received_date         DATE
+rate_per_kg           NUMERIC(14,2)
+status                VARCHAR
+notes                 TEXT
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+This represents the external manufacturing lifecycle.
+
+7.3.15 Table 10 — outsourcing_order_items
+outsourcing_order_items
+----------------------------------
+outsourcing_job_id      UUID FK
+order_item_id           UUID FK
+allocated_weight_kg     NUMERIC(12,3)
+
+Primary key:
+
+(outsourcing_job_id, order_item_id)
+
+This allows one outsourcing job to fulfill multiple orders.
+
+7.3.16 Table 11 — work_records
+work_records
+----------------------------------
+id                    UUID PK
+worker_id             UUID FK
+work_date             DATE
+work_type             VARCHAR
+quantity_kg           NUMERIC(12,3)
+hours                 NUMERIC(8,2)
+rate                  NUMERIC(14,2)
+amount                NUMERIC(14,2)
+production_batch_id   UUID FK NULL
+status                VARCHAR
+notes                 TEXT
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+Why both quantity_kg and hours?
+
+Because:
+
+Rolling → hourly
+Warping → kg-based
+
+Only the relevant field is populated.
+
+The application layer validates:
+
+ROLLING → hours required
+WARPING → quantity required
+7.3.17 Table 12 — payments
+payments
+----------------------------------
+id                    UUID PK
+payment_number        VARCHAR UNIQUE
+party_id              UUID FK
+direction             VARCHAR
+amount                NUMERIC(14,2)
+payment_method        VARCHAR
+financial_account_id  UUID FK
+payment_date          DATE
+status                VARCHAR
+notes                 TEXT
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+Example:
+
+party = Customer A
+direction = RECEIVED
+amount = 50,000
+method = BANK_TRANSFER
+account = SBI
+7.3.18 Payment Allocation Tables
+
+For customer payments:
+
+customer_payment_allocations
+----------------------------------
+id                    UUID PK
+payment_id            UUID FK
+order_item_id         UUID FK
+allocated_amount      NUMERIC(14,2)
+
+For supplier:
+
+supplier_payment_allocations
+----------------------------------
+id                    UUID PK
+payment_id            UUID FK
+purchase_id           UUID FK
+allocated_amount      NUMERIC(14,2)
+
+For manufacturer:
+
+manufacturer_payment_allocations
+----------------------------------
+id                    UUID PK
+payment_id            UUID FK
+outsourcing_job_id    UUID FK
+allocated_amount      NUMERIC(14,2)
+
+This gives us strong database-level referential integrity.
+
+7.3.19 Table 13 — financial_accounts
+financial_accounts
+----------------------------------
+id                      UUID PK
+account_name            VARCHAR
+account_type            VARCHAR
+bank_name               VARCHAR NULL
+masked_account_number   VARCHAR NULL
+status                  VARCHAR
+created_at              TIMESTAMPTZ
+updated_at              TIMESTAMPTZ
+
+Examples:
+
+Cash
+SBI Current Account
+HDFC Current Account
+UPI
+7.3.20 Table 14 — financial_transactions
+financial_transactions
+----------------------------------
+id                    UUID PK
+financial_account_id  UUID FK
+transaction_date      DATE
+transaction_type      VARCHAR
+direction             VARCHAR
+amount                NUMERIC(14,2)
+
+payment_id            UUID NULL
+expense_id            UUID NULL
+loan_id               UUID NULL
+chit_id               UUID NULL
+account_transfer_id   UUID NULL
+
+reference_number      VARCHAR NULL
+description           TEXT
+
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+
+This table represents the actual movement of money.
+
+7.3.21 Table 15 — account_transfers
+account_transfers
+----------------------------------
+id                    UUID PK
+transfer_number       VARCHAR UNIQUE
+source_account_id     UUID FK
+destination_account_id UUID FK
+amount                NUMERIC(14,2)
+transfer_date         DATE
+notes                 TEXT
+created_at             TIMESTAMPTZ
+
+Example:
+
+SBI
+ ↓
+₹20,000
+ ↓
+Cash
+
+This creates:
+
+SBI → -20,000
+Cash → +20,000
+
+without affecting revenue/expense.
+
+7.3.22 Table 16 — expenses
+expenses
+----------------------------------
+id                    UUID PK
+expense_number        VARCHAR UNIQUE
+expense_category      VARCHAR
+amount                NUMERIC(14,2)
+expense_date          DATE
+financial_account_id  UUID FK
+description           TEXT
+status                VARCHAR
+created_at             TIMESTAMPTZ
+updated_at             TIMESTAMPTZ
+
+Potential categories:
+
+TRANSPORT
+ELECTRICITY
+RENT
+WORKER
+MAINTENANCE
+PACKING
+OTHER
+
+Don't hard-code dozens of categories now.
+
+7.3.23 Table 17 — loans
+loans
+----------------------------------
+id                    UUID PK
+loan_number           VARCHAR UNIQUE
+party_id              UUID FK
+principal_amount      NUMERIC(14,2)
+start_date            DATE
+status                VARCHAR
+notes                 TEXT
+created_at             TIMESTAMPTZ
+updated_at             TIMESTAMPTZ
+
+Loan repayment details live in financial transactions rather than being duplicated here.
+
+7.3.24 Table 18 — chits
+chits
+----------------------------------
+id                    UUID PK
+chit_number           VARCHAR UNIQUE
+chit_name              VARCHAR
+total_amount           NUMERIC(14,2)
+monthly_amount         NUMERIC(14,2)
+start_date             DATE
+status                 VARCHAR
+notes                  TEXT
+created_at              TIMESTAMPTZ
+updated_at              TIMESTAMPTZ
+
+Chit contributions and payouts become financial transactions linked to the chit.
+
+7.3.25 Table 19 — documents
+documents
+----------------------------------
+id                    UUID PK
+document_type         VARCHAR
+file_name             VARCHAR
+storage_path          TEXT
+reference_type        VARCHAR
+reference_id          UUID
+uploaded_at           TIMESTAMPTZ
+uploaded_by           UUID
+
+Examples:
+
+PURCHASE_BILL
+SALES_BILL
+BANK_STATEMENT
+OTHER
+
+Again, document references are polymorphic.
+
+7.3.26 Table 20 — notifications
+notifications
+----------------------------------
+id                    UUID PK
+notification_type     VARCHAR
+recipient_party_id    UUID FK
+scheduled_at           TIMESTAMPTZ
+sent_at                TIMESTAMPTZ NULL
+status                 VARCHAR
+reference_type        VARCHAR
+reference_id          UUID
+created_at             TIMESTAMPTZ
+
+Example:
+
+Supplier payment due
+        ↓
+Notification
+        ↓
+scheduled_at = Day 8
+7.3.27 Table 21 — notification_configurations
+notification_configurations
+----------------------------------
+id                    UUID PK
+notification_type     VARCHAR UNIQUE
+enabled               BOOLEAN
+days_before_due       INTEGER
+created_at             TIMESTAMPTZ
+updated_at             TIMESTAMPTZ
+
+For example:
+
+SUPPLIER_DUE
+enabled = true
+days_before_due = 2
+7.3.28 Enums vs VARCHAR
+
+You have two choices.
+
+PostgreSQL ENUM
+
+Example:
+
+payment_method ENUM
+
+Advantages:
+
+strong DB validation
+
+Disadvantages:
+
+migrations become slightly more awkward
+changing enum values requires DB migration
+VARCHAR + application enum
+
+For SmartSilk, I recommend:
+
+VARCHAR
++
+Java enum
++
+database CHECK constraint where appropriate
+
+Example:
+
+payment_method VARCHAR NOT NULL
+
+Application:
+
+CASH
+UPI
+BANK_TRANSFER
+CHEQUE
+
+This gives us flexibility while retaining validation.
+
+7.3.29 Nullability Rules
+
+A good question is:
+
+Should this column be NULL?
+
+Use NOT NULL when the fact is mandatory.
+
+Example:
+
+purchase.supplier_id → NOT NULL
+purchase.purchase_date → NOT NULL
+purchase.ordered_weight_kg → NOT NULL
+
+Use NULL when the information genuinely does not exist yet.
+
+Example:
+
+outsourcing_jobs.received_date
+
+At creation:
+
+received_date = NULL
+
+because the job hasn't been received.
+
+Later:
+
+received_date = 2026-09-20
+
+This is meaningful NULL usage.
+
+7.3.30 Don't Use Fake Values Instead of NULL
+
+Bad:
+
+received_date = 1900-01-01
+
+or:
+
+received_weight = 0
+
+to mean:
+
+"We don't know yet."
+
+Use:
+
+NULL
+
+when the value genuinely doesn't exist.
+
+7.3.31 Flyway Migration Structure
+
+Since we're using Spring Boot + PostgreSQL, database changes should be version-controlled through Flyway.
+
+Conceptually:
+
+db/migration/
+
+V1__create_parties.sql
+V2__create_procurement.sql
+V3__create_inventory.sql
+V4__create_orders.sql
+V5__create_production.sql
+V6__create_outsourcing.sql
+V7__create_workforce.sql
+V8__create_finance.sql
+V9__create_loans_and_chits.sql
+V10__create_documents.sql
+V11__create_notifications.sql
+V12__add_indexes.sql
+
+The exact split can change.
+
+The important principle:
+
+Never manually modify production schema and forget to record the change in version control.
+
+7.3.32 Why Flyway Matters
+
+Imagine:
+
+Developer A
+Database version 8
+
+Developer B
+Database version 8
+
+A changes:
+
+add credit_days
+
+B changes:
+
+add masked_account_number
+
+Without migrations, people manually modify databases and eventually nobody knows what the correct schema is.
+
+With Flyway:
+
+V9
+V10
+V11
+...
+
+the schema becomes part of the application source code.
+
+7.3.33 Schema Evolution
+
+Your database will change.
+
+For example, initially:
+
+work_records
+quantity_kg
+
+Later you discover:
+
+Worker payment rates differ by production type.
+
+You add:
+
+work_type
+
+through a migration.
+
+Don't manually rewrite old databases.
+
+Instead:
+
+V15__add_work_type.sql
+
+This is how production systems evolve.
+
+7.3.34 One More Important Decision — Opening Balances
+
+Suppose SmartSilk starts today and the business already has:
+
+Cash = ₹80,000
+Bank = ₹2,00,000
+
+Don't simply put:
+
+financial_accounts
+opening_balance = 280000
+
+and then start transactions.
+
+Better:
+
+Financial Account
+      │
+      ▼
+Opening Balance Transaction
+      │
+      ▼
+₹80,000
+
+and:
+
+Bank Account
+      │
+      ▼
+Opening Balance Transaction
+      │
+      ▼
+₹2,00,000
+
+Then the entire account history follows one consistent model.
+
+The opening balance is simply the initial state transaction.
+
+7.3.35 What We Deliberately Are NOT Adding
+
+This is just as important as what we are adding.
+
+We are not adding:
+
+inventory_balance_history
+fifo_layers
+accounting_journal_entries
+general_ledger_accounts
+warehouse_zones
+microservice_database_per_module
+event_store
+Kafka topics
+
+yet.
+
+Why?
+
+Because they are not required for the current MVP.
+
+We want:
+
+Simple enough to build
+        +
+Strong enough to be correct
+        +
+Expandable later
+7.3.36 Final Database Architecture
+
+Your SmartSilk PostgreSQL database is now conceptually:
+
+                         ┌──────────────┐
+                         │    PARTIES   │
+                         └──────┬───────┘
+                                │
+       ┌────────────────────────┼────────────────────────┐
+       │                        │                        │
+       ▼                        ▼                        ▼
+ PROCUREMENT                 ORDERS                  WORKFORCE
+       │                        │                        │
+       ▼                        ▼                        ▼
+ PURCHASE                 ORDER ITEM              WORK RECORD
+       │                   │       │
+       ▼                   │       │
+ RECEIPT                   │       │
+       │                   ▼       ▼
+       └──────► MATERIAL  PRODUCTION OUTSOURCING
+                MOVEMENT       │       │
+                    │          └───┬───┘
+                    ▼              │
+                INVENTORY          │
+                                   │
+                         ┌─────────┴─────────┐
+                         ▼                   ▼
+                      PAYMENTS          FINANCIAL
+                         │             TRANSACTIONS
+                         │                   │
+                         ▼                   ▼
+                    ALLOCATIONS         ACCOUNTS
+                                             │
+                        ┌────────────┬────────┼──────────┐
+                        ▼            ▼        ▼          ▼
+                     EXPENSE       LOAN     CHIT      TRANSFER
+
+This is now a real database blueprint, not just a conceptual ER diagram.
+
+Step 7.3 complete

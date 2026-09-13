@@ -1,0 +1,813 @@
+Step 8.4 — Domain Services & Business Rules
+
+Now we need to answer a very important backend question:
+
+Where should SmartSilk's business rules actually live?
+
+This is one of the areas interviewers often test because simply knowing Spring Boot annotations isn't enough. You should understand why a rule belongs in an entity, service, database, or controller.
+
+8.4.1 The Four Places Rules Can Live
+
+For SmartSilk, think in four layers:
+
+                    BUSINESS RULE
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       Controller     Application      Domain
+          │             Service         │
+          │                              ▼
+          │                           Database
+
+More precisely:
+
+Layer	Responsibility
+Controller	HTTP/request concerns
+Application Service	Orchestrates a use case
+Domain	Business rules
+Database	Structural/data integrity
+
+The trick is knowing which rule belongs where.
+
+8.4.2 Controller Rules
+
+Controllers should handle things like:
+
+Is JSON valid?
+Is required field present?
+Is authentication present?
+Is request format valid?
+
+For example:
+
+amount = "hello"
+
+is a request-validation problem.
+
+But:
+
+Customer cannot pay more than allowed?
+
+is not a controller concern.
+
+8.4.3 Application Service Rules
+
+Application services coordinate multiple objects/repositories.
+
+For example:
+
+RecordCustomerPayment
+
+might need:
+
+Customer
+Order
+Payment
+PaymentAllocation
+FinancialAccount
+FinancialTransaction
+
+The application service coordinates all of them.
+
+Think:
+
+Application service = workflow coordinator.
+
+8.4.4 Domain Rules
+
+Domain rules answer:
+
+Is this business operation logically valid?
+
+Examples:
+
+Can this order be modified?
+
+Can this purchase receive more material?
+
+Can this production batch be completed?
+
+Can this payment be allocated?
+
+Can this stock be consumed?
+
+These are SmartSilk rules, not HTTP rules.
+
+8.4.5 Database Rules
+
+The database should protect structural invariants.
+
+For example:
+
+amount > 0
+weight > 0
+credit_days >= 0
+unique(purchase_number)
+foreign key supplier_id
+
+The database should act as the last line of defense.
+
+8.4.6 Example: Purchase Receiving
+
+Suppose:
+
+Purchase ordered = 500 kg
+Already received = 300 kg
+
+Someone attempts to receive:
+
+250 kg
+
+Total:
+
+300 + 250 = 550 kg
+
+This violates the business rule.
+
+Where should it be detected?
+
+Controller?
+
+No.
+
+Database alone?
+
+Not ideal because the rule spans multiple rows/records.
+
+Application/domain?
+
+Yes.
+
+The application service loads the purchase and asks:
+
+Can this purchase receive 250 kg?
+
+The domain logic determines:
+
+remaining = 500 - 300
+remaining = 200
+
+250 > 200
+→ reject
+8.4.7 Entity vs Domain Service
+
+This distinction is important.
+
+Use an entity method when the rule naturally belongs to one entity.
+
+Example:
+
+Purchase
+    ↓
+canReceive(quantity)
+
+Because receiving is naturally related to the purchase.
+
+But suppose a rule requires several entities:
+
+Customer
+Order
+Payment
+PaymentAllocation
+
+Then use a domain/application service.
+
+8.4.8 Example: Locked Order
+
+We have a SmartSilk rule:
+
+Once production starts, an order cannot be freely modified.
+
+That is naturally related to the order.
+
+Conceptually:
+
+Order
+ ├── status
+ ├── locked
+ └── canModify()
+
+The service asks:
+
+if (!order.canModify()) {
+    reject;
+}
+
+This is much better than:
+
+if(order.getLocked() == false) ...
+
+scattered throughout controllers.
+
+8.4.9 Example: Production
+
+Production has:
+
+input = 100 kg
+output = 94 kg
+wastage = 6 kg
+
+Valid:
+
+100 = 94 + 6
+
+But:
+
+input = 100
+output = 94
+wastage = 10
+
+is invalid.
+
+This is a domain invariant.
+
+Conceptually:
+
+ProductionBatch.complete()
+
+can verify the invariant.
+
+8.4.10 Cross-Entity Rule
+
+Now consider:
+
+A production batch cannot consume more raw silk than is available.
+
+This involves:
+
+ProductionBatch
++
+Inventory
+
+The production batch alone doesn't know global stock.
+
+So the workflow belongs in an application/domain service:
+
+CompleteProductionService
+        │
+        ├── load production batch
+        ├── lock inventory
+        ├── check stock
+        ├── consume stock
+        ├── create output
+        └── complete batch
+8.4.11 Don't Create a "God Service"
+
+A common beginner mistake is:
+
+SmartSilkService
+
+containing:
+
+createCustomer()
+createPurchase()
+receiveMaterial()
+createOrder()
+completeProduction()
+recordPayment()
+createExpense()
+...
+
+Eventually:
+
+SmartSilkService.java
+
+becomes 4,000 lines.
+
+Instead:
+
+PurchaseApplicationService
+OrderApplicationService
+InventoryApplicationService
+ProductionApplicationService
+PaymentApplicationService
+FinanceApplicationService
+
+Each owns a bounded set of use cases.
+
+8.4.12 Don't Overuse Domain Services Either
+
+Another mistake is creating:
+
+PurchaseDomainService
+OrderDomainService
+PaymentDomainService
+...
+
+for every single operation even when the logic naturally belongs to an entity.
+
+Use a domain service when the business rule:
+
+doesn't naturally belong to one entity
+involves multiple domain objects
+represents meaningful domain logic
+
+Not simply because "services are good".
+
+8.4.13 SmartSilk Example — Payment Allocation
+
+Suppose:
+
+Order A outstanding = ₹30,000
+Order B outstanding = ₹40,000
+Order C outstanding = ₹20,000
+
+Customer pays:
+
+₹50,000
+
+Oldest-first allocation:
+
+Order A → ₹30,000
+Order B → ₹20,000
+Order C → ₹0
+
+This is a business rule.
+
+It should not be implemented in the Kotlin frontend.
+
+It should not be implemented in a controller.
+
+The backend owns it.
+
+Conceptually:
+
+PaymentAllocationService
+        │
+        ├── find outstanding obligations
+        ├── sort oldest-first
+        ├── allocate amount
+        └── create allocation records
+8.4.14 Why Backend Owns Allocation
+
+Imagine the frontend says:
+
+{
+  "orderA": 10000,
+  "orderB": 40000
+}
+
+The backend still must validate:
+
+Are these orders owned by this customer?
+Are they still outstanding?
+Is the allocation <= outstanding?
+Does allocation total equal payment?
+
+Never trust the frontend's calculation.
+
+8.4.15 Inventory Rule
+
+Inventory is even more important.
+
+Never expose a generic frontend operation like:
+
+"set stock to 500"
+
+Instead expose business operations:
+
+Receive material
+Consume material
+Issue for outsourcing
+Receive outsourced material
+Record production output
+Record return
+
+Each creates a material movement.
+
+8.4.16 Why This Design Is Powerful
+
+Suppose current stock is:
+
+100 kg
+
+The system doesn't simply store:
+
+stock = 100
+
+as an arbitrary number.
+
+It knows:
+
++100 receipt
+-40 production
++10 return
+-20 outsourcing
+
+Therefore:
+
+Current stock = 50 kg
+
+The system can explain:
+
+"Why is there 50 kg?"
+
+That traceability is extremely valuable for SmartSilk.
+
+8.4.17 Domain Rule Classification
+
+Let's classify SmartSilk's major rules.
+
+Purchase
+ordered weight > 0
+rate > 0
+credit days >= 0
+
+received <= ordered
+accepted + rejected <= received
+Inventory
+movement quantity > 0
+no negative stock
+valid source/destination
+valid product type
+Orders
+customer required
+weight > 0
+rate >= 0
+locked order cannot be freely edited
+Production
+input > 0
+output >= 0
+wastage >= 0
+input = output + wastage + discrepancy
+Outsourcing
+manufacturer required
+issued weight > 0
+received <= logically permitted amount
+external WIP tracked
+Payments
+amount > 0
+valid party
+valid account
+allocation <= outstanding
+allocation total <= payment
+Finance
+transaction amount > 0
+valid account
+transfer source != destination
+internal transfer != revenue/expense
+8.4.18 Business Rule vs Validation Rule
+
+This distinction is useful in interviews.
+
+Validation
+amount cannot be null
+weight must be positive
+email format must be valid
+Business rule
+Payment cannot exceed outstanding allocation.
+
+Locked order cannot be modified.
+
+Stock cannot become negative.
+
+Vuda warp cannot be sent to internal production.
+
+Validation is usually simpler.
+
+Business rules often require database state and domain knowledge.
+
+8.4.19 Example Architecture
+
+Consider:
+
+POST /api/v1/production-batches/{id}/complete
+
+Request:
+
+output = 95 kg
+wastage = 5 kg
+
+Flow:
+
+Controller
+    │
+    ▼
+CompleteProductionService
+    │
+    ├── Load batch
+    │
+    ├── Validate batch state
+    │
+    ├── Lock inventory
+    │
+    ├── Check raw silk
+    │
+    ├── Validate:
+    │      input = output + wastage
+    │
+    ├── Create consumption movement
+    │
+    ├── Create production output movement
+    │
+    ├── Create wastage movement
+    │
+    └── Complete batch
+            │
+            ▼
+         COMMIT
+
+That's a real business use case.
+
+8.4.20 What Should the Entity Know?
+
+A useful rule:
+
+Entities should protect their own state.
+
+For example, don't freely allow:
+
+order.setLocked(false);
+
+from anywhere.
+
+Instead have meaningful operations:
+
+order.lock();
+order.cancel();
+order.markProductionStarted();
+
+This makes illegal state transitions harder to create.
+
+8.4.21 State Machines
+
+Several SmartSilk entities naturally have states.
+
+Purchase
+CREATED
+   ↓
+PARTIALLY_RECEIVED
+   ↓
+FULLY_RECEIVED
+
+Potentially:
+
+CANCELLED
+Order
+CREATED
+   ↓
+CONFIRMED
+   ↓
+IN_PROGRESS
+   ↓
+COMPLETED
+Production
+PLANNED
+   ↓
+IN_PROGRESS
+   ↓
+COMPLETED
+Outsourcing
+CREATED
+   ↓
+MATERIAL_ISSUED
+   ↓
+PARTIALLY_RECEIVED
+   ↓
+COMPLETED
+8.4.22 Why State Transitions Matter
+
+Don't allow:
+
+COMPLETED → CREATED
+
+just because someone changed a field.
+
+Instead define legal transitions.
+
+For example:
+
+CREATED
+  ├── confirm()
+  └── cancel()
+
+CONFIRMED
+  ├── start()
+  └── cancel()
+
+IN_PROGRESS
+  └── complete()
+
+COMPLETED
+  └── no normal reversal
+
+Corrections should happen through explicit reversal/correction workflows.
+
+8.4.23 Never Treat Financial History Like Normal CRUD
+
+This is especially important.
+
+Don't provide:
+
+PUT /payments/15
+{
+  "amount": 20000
+}
+
+after the payment has already affected financial records.
+
+Suppose original payment:
+
+₹50,000
+
+was allocated and committed.
+
+Changing it silently to:
+
+₹20,000
+
+could destroy financial history.
+
+Instead:
+
+Original Payment
+       ↓
+Correction / Reversal
+       ↓
+New valid state
+
+This preserves auditability.
+
+8.4.24 Same for Inventory
+
+Don't edit:
+
+RECEIPT = 100 kg
+
+to:
+
+RECEIPT = 70 kg
+
+after production has already consumed 80 kg.
+
+Instead record a correction:
+
++100 receipt
+-30 adjustment/return
+
+Now history remains explainable.
+
+8.4.25 Domain Events — Light Version
+
+Eventually SmartSilk may benefit from events such as:
+
+PurchaseReceived
+PaymentRecorded
+ProductionCompleted
+OutsourcingReceived
+SupplierDue
+
+For MVP, don't build Kafka or a full event-sourcing system.
+
+You can simply use internal application events for secondary actions.
+
+For example:
+
+PaymentRecorded
+       ↓
+Notification listener
+       ↓
+Generate notification
+
+The financial transaction itself remains the source of truth.
+
+8.4.26 Why This Matters for WhatsApp
+
+Suppose:
+
+PaymentRecorded
+
+successfully commits.
+
+Then:
+
+WhatsApp notification
+
+fails.
+
+We should not roll back the payment just because WhatsApp is unavailable.
+
+Instead:
+
+Payment
+  ↓
+COMMITTED
+  ↓
+Notification pending/retry
+
+This is an important reliability principle.
+
+8.4.27 SmartSilk Rule Ownership
+
+Here's the model I recommend:
+
+Rule	Owner
+JSON field required	DTO validation
+Authentication	Spring Security
+User permission	Authorization
+Purchase can receive quantity	Domain/Application
+Stock availability	Inventory domain/application
+Payment allocation	Finance/Application
+Production equation	Production domain
+Order locking	Order domain
+Positive DB amount	PostgreSQL
+Unique purchase number	PostgreSQL
+Foreign key existence	PostgreSQL
+Transaction atomicity	Spring + PostgreSQL
+Concurrent stock consumption	DB locking + service
+Duplicate API retry	Idempotency layer
+
+This separation is extremely useful.
+
+8.4.28 The Golden Rule
+
+When you're unsure where a rule belongs, ask:
+
+Question 1
+
+Is it about HTTP?
+
+→ Controller / DTO
+
+Question 2
+
+Is it about coordinating a use case?
+
+→ Application Service
+
+Question 3
+
+Is it a business concept/invariant?
+
+→ Domain
+
+Question 4
+
+Is it structural data integrity?
+
+→ Database
+
+Question 5
+
+Does it cross multiple modules/entities?
+
+→ Application/Domain Service
+
+This decision framework will help you throughout SmartSilk.
+
+8.4.29 Interview Question
+"Why shouldn't business logic be inside controllers?"
+
+Strong answer:
+
+"Controllers should focus on HTTP concerns such as request validation, authentication context and response mapping. Business logic belongs in application and domain layers so that it can be reused by REST APIs, scheduled jobs, voice commands or other interfaces. It also makes transaction boundaries and testing much cleaner."
+
+That's exactly the reasoning we want in SmartSilk.
+
+8.4.30 SmartSilk Backend Mental Model
+
+Keep this picture in your head:
+
+                         USER
+                           │
+                           ▼
+                    Kotlin Frontend
+                           │
+                           ▼
+                     REST Controller
+                           │
+                           ▼
+                  Request Validation
+                           │
+                           ▼
+                 Application Service
+                           │
+                ┌──────────┴──────────┐
+                ▼                     ▼
+          Domain Rules           Repositories
+                                      │
+                                      ▼
+                                  PostgreSQL
+                                      │
+                             ACID + Constraints
+
+And external systems:
+
+                    Application
+                         │
+             ┌───────────┴───────────┐
+             ▼                       ▼
+         WhatsApp                 Voice AI
+       after commit             before command
+Step 8.4 Complete
+
+We now understand:
+
+where business rules belong
+entity vs service responsibilities
+application service vs domain service
+state transitions
+financial/inventory immutability
+rule ownership
+cross-module business logic
+how SmartSilk's architecture protects correctness

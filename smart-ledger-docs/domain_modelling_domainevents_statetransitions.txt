@@ -1,0 +1,571 @@
+Step 4.8 — Define Domain Events & State Transitions
+
+Now we define what business actions happen inside SmartSilk and what changes they cause.
+
+This is different from lifecycles:
+
+Lifecycle → current state of an entity
+Domain event → something meaningful happened in the business
+State transition → how the entity changes because of that event
+
+Example:
+
+Business Event:
+Customer Payment Received
+
+Effects:
+- Payment recorded
+- Bank/cash balance increases
+- Payment allocated to outstanding order
+- Customer outstanding decreases
+- Order payment status may change
+4.8.1 What is a Domain Event?
+
+A domain event represents a meaningful business occurrence.
+
+Examples:
+
+PurchaseOrdered
+MaterialReceived
+MaterialReturned
+CustomerOrderPlaced
+ProductionStarted
+ProductionCompleted
+OutsourcingMaterialIssued
+OutsourcingWarpReceived
+CustomerPaymentReceived
+SupplierPaymentMade
+ExpenseRecorded
+LoanReceived
+LoanPrincipalRepaid
+ChitContributionRecorded
+RefundSettled
+
+These events describe what happened, not merely what database operation occurred.
+
+Bad event naming:
+
+InsertPurchaseRow
+UpdateInventoryColumn
+
+Better:
+
+MaterialReceived
+
+Because the event expresses business meaning.
+
+4.8.2 Purchase Events
+Event: Purchase Ordered
+PurchaseOrdered
+Effects
+Purchase record created
+Supplier obligation may be created depending on payment terms
+Expected material quantity recorded
+Receiving status becomes ORDERED
+
+Example:
+
+Purchase:
+180 kg
+₹90,000
+Credit purchase
+
+At this point:
+
+Expected material = 180 kg
+Available inventory = unchanged
+Supplier payable = ₹90,000
+
+Important:
+
+Ordering material does not mean it has physically entered inventory.
+
+Event: Material Received
+MaterialReceived
+Effects
+Material receipt created
+Available inventory increases
+Purchase received quantity increases
+Purchase receiving status recalculated
+
+Example:
+
+Purchase ordered = 180 kg
+Receipt received = 100 kg
+
+Result:
+
+Received = 100 kg
+Remaining expected = 80 kg
+Purchase status = PARTIALLY_RECEIVED
+
+When another 80 kg arrives:
+
+Purchase status = FULLY_RECEIVED
+Event: Material Returned
+MaterialReturned
+Effects
+Available inventory decreases
+Receipt's returned quantity increases
+Purchase/receipt return history is preserved
+Supplier adjustment may be created
+
+Example:
+
+Received = 100 kg
+Used = 1 kg
+Returned = 99 kg
+
+The system should not rewrite the original receipt as though 100 kg never arrived.
+
+4.8.3 Customer Order Events
+Event: CustomerOrderPlaced
+CustomerOrderPlaced
+Effects
+Customer order created
+Required product and weight recorded
+Order becomes PLACED
+Optional material requirement/commitment is generated
+Event: CustomerOrderConfirmed
+CustomerOrderConfirmed
+Effects
+Order becomes confirmed
+Business commitment becomes active
+Material availability may be checked
+Production or allocation can be planned
+Event: ProductionStartedForOrder
+ProductionStartedForOrder
+Effects
+Order becomes IN_PROGRESS
+Required material may be allocated
+Order modification restrictions become stronger
+
+This is important because your business rule says that once production starts, the customer should not freely change or cancel the order.
+
+Event: ProductDelivered
+ProductDelivered
+Effects
+Finished inventory decreases
+Delivered quantity is recorded
+Order becomes DELIVERED
+Billing/payment eligibility may change
+
+But remember:
+
+Delivery does not necessarily mean payment has been received.
+
+Event: OrderCompleted
+OrderCompleted
+Conditions
+
+Usually:
+
+Required product delivered
+Any required final adjustments completed
+Order is no longer operationally pending
+
+The payment status should remain separately tracked.
+
+4.8.4 Customer Payment Events
+Event: CustomerPaymentReceived
+CustomerPaymentReceived
+Effects
+Payment record created
+Financial transaction created
+Cash/bank balance increases
+Payment allocated to outstanding orders
+Customer outstanding recalculated
+Relevant order payment status updated
+Related overdue notification resolved if applicable
+
+Example:
+
+Customer owes:
+Order A = ₹20,000
+Order B = ₹30,000
+Order C = ₹40,000
+
+Payment received = ₹45,000
+
+Oldest-first allocation:
+
+Order A settled = ₹20,000
+Order B partially settled = ₹25,000
+Order B remaining = ₹5,000
+4.8.5 Supplier Payment Events
+Event: SupplierPaymentMade
+SupplierPaymentMade
+Effects
+Payment recorded
+Cash/bank decreases
+Payment allocated to oldest supplier obligations
+Supplier payable recalculated
+Overdue reminder may be resolved
+
+Example:
+
+Purchase A payable = ₹40,000
+Purchase B payable = ₹60,000
+Payment made = ₹70,000
+
+Allocation:
+
+Purchase A = fully settled
+Purchase B = ₹30,000 settled
+Purchase B remaining = ₹30,000
+4.8.6 Production Events
+Event: ProductionStarted
+ProductionStarted
+Effects
+Production batch becomes IN_PROGRESS
+Raw silk is allocated or consumed depending on the chosen material model
+WIP increases
+Available raw silk decreases
+
+Example:
+
+Available raw silk = 200 kg
+Production input = 80 kg
+
+After event:
+
+Available raw silk = 120 kg
+Production WIP = 80 kg
+Event: ProductionCompleted
+ProductionCompleted
+Effects
+WIP decreases
+Finished warp inventory increases
+Finished weight recorded
+Wastage recorded
+Production batch becomes COMPLETED
+Worker work records may be finalized
+
+Example:
+
+Input = 80 kg
+Finished warp = 76 kg
+Wastage = 4 kg
+
+The system should preserve this reconciliation:
+
+Input = Finished Output + Wastage + Difference
+
+If there is unexplained difference, it should be visible rather than silently ignored.
+
+4.8.7 Outsourcing Events
+Event: OutsourcingJobCreated
+OutsourcingJobCreated
+Effects
+Outsourcing job created
+Manufacturer assigned
+Expected raw material and product details recorded
+Event: MaterialIssuedToManufacturer
+MaterialIssuedToManufacturer
+Effects
+Available raw silk decreases
+External WIP increases
+Issued weight recorded
+Job status becomes SENT_TO_MANUFACTURER or IN_PROGRESS
+
+Example:
+
+Available raw silk = 500 kg
+Issued externally = 150 kg
+
+Result:
+
+Available raw silk = 350 kg
+External WIP = 150 kg
+Event: OutsourcedWarpReceived
+OutsourcedWarpReceived
+Effects
+External WIP decreases
+Finished warp inventory increases
+Received weight recorded
+Manufacturer payable calculated or updated
+Job status becomes PARTIALLY_RECEIVED or FULLY_RECEIVED
+
+Example:
+
+Issued = 150 kg
+Received = 143 kg
+Difference = 7 kg
+
+The difference should be visible for review.
+
+4.8.8 Worker Events
+Event: WorkRecorded
+WorkRecorded
+Effects
+Worker work record created
+Hours/kg and applicable historical rate stored
+Earnings calculated
+Worker payable increases
+
+Example:
+
+Rolling:
+8 hours × ₹100 = ₹800
+Event: WorkerPaid
+WorkerPaid
+Effects
+Financial transaction created
+Cash/bank decreases
+Relevant work records marked as paid or allocated
+Worker outstanding decreases
+
+One payment may settle multiple work records.
+
+4.8.9 Expense Events
+Event: ExpenseRecorded
+ExpenseRecorded
+Effects
+Expense record created
+Financial transaction created if immediately paid
+Cash/bank decreases
+Expense category becomes available for reporting
+
+Important:
+
+An expense should not be treated as revenue reduction merely because money went out. It must be classified correctly.
+
+4.8.10 Loan Events
+Event: LoanReceived
+LoanReceived
+Effects
+Loan principal increases
+Cash/bank increases
+Liability is created
+It is not classified as business revenue
+Event: LoanInterestPaid
+LoanInterestPaid
+Effects
+Cash/bank decreases
+Interest expense recorded
+Outstanding interest decreases
+Event: LoanPrincipalRepaid
+LoanPrincipalRepaid
+Effects
+Cash/bank decreases
+Loan principal decreases
+Principal repayment is not classified as ordinary expense
+4.8.11 Chit Events
+Event: ChitContributionRecorded
+ChitContributionRecorded
+Effects
+Physical cash decreases
+Chit contribution history increases
+Remaining contribution recalculated
+
+Only cash is permitted.
+
+Event: ChitPayoutReceived
+ChitPayoutReceived
+Effects
+Physical cash increases
+Chit payout recorded
+Bidding/deduction information stored
+Investment analysis updated
+
+The exact bidding formula remains:
+
+CHIT_BIDDING_CALCULATION
+4.8.12 Refund Events
+Event: RefundRecorded
+RefundRecorded
+Effects
+Refund obligation created
+Original order/sale remains unchanged
+Refund amount tracked separately
+Event: RefundSettled
+RefundSettled
+Effects
+Cash/bank decreases, or
+Refund is adjusted against a future customer order
+Refund outstanding decreases
+Refund status becomes SETTLED
+4.8.13 Bank/Cash Events
+Event: BankToCashTransfer
+BankToCashTransfer
+Effects:
+Bank balance decreases
+Physical cash increases
+
+This is not revenue.
+
+Event: CashToBankTransfer
+CashToBankTransfer
+Effects:
+Physical cash decreases
+Bank balance increases
+Event: BankToBankTransfer
+BankToBankTransfer
+Effects:
+Source bank decreases
+Destination bank increases
+
+Again, this is not an income or expense.
+
+4.8.14 Event → State Transition Examples
+Example 1: Purchase
+PurchaseOrdered
+      ↓
+ORDERED
+      ↓
+MaterialReceived
+      ↓
+PARTIALLY_RECEIVED
+      ↓
+MaterialReceived
+      ↓
+FULLY_RECEIVED
+Example 2: Customer Order
+CustomerOrderPlaced
+      ↓
+PLACED
+
+CustomerOrderConfirmed
+      ↓
+CONFIRMED
+
+ProductionStartedForOrder
+      ↓
+IN_PROGRESS
+
+ProductDelivered
+      ↓
+DELIVERED
+
+OrderCompleted
+      ↓
+COMPLETED
+Example 3: Customer Payment
+CustomerPaymentReceived
+      ↓
+Payment recorded
+      ↓
+Financial transaction recorded
+      ↓
+Payment allocated
+      ↓
+Outstanding recalculated
+      ↓
+Order payment status updated
+Example 4: Outsourcing
+OutsourcingJobCreated
+      ↓
+MaterialIssuedToManufacturer
+      ↓
+External WIP
+      ↓
+OutsourcedWarpReceived
+      ↓
+Finished Inventory
+      ↓
+Manufacturer Payable
+4.8.15 Important Design Decision: Events vs Direct Updates
+
+For the MVP, you do not necessarily need a full event-driven microservices architecture.
+
+You can implement these as normal Spring Boot service operations inside database transactions.
+
+For example:
+
+recordCustomerPayment()
+
+internally performs:
+
+- Create payment
+- Create financial transaction
+- Allocate payment
+- Recalculate outstanding
+- Resolve notification
+
+You can still think in terms of domain events without introducing Kafka or a complex event bus.
+
+Recommended MVP approach
+Spring Service Method
+       ↓
+Database Transaction
+       ↓
+Business State Changes
+       ↓
+Optional Internal Domain Event / Audit Record
+
+This gives you clean domain thinking without unnecessary infrastructure.
+
+4.8.16 Core Events for MVP
+
+You do not need to implement every possible event immediately.
+
+The most important MVP events are:
+
+Material
+PurchaseOrdered
+MaterialReceived
+MaterialReturned
+MaterialConsumed
+ProductionCompleted
+MaterialIssuedToManufacturer
+OutsourcedWarpReceived
+WastageRecorded
+Sales
+CustomerOrderPlaced
+CustomerOrderConfirmed
+ProductDelivered
+CustomerPaymentReceived
+RefundRecorded
+RefundSettled
+Finance
+SupplierPaymentMade
+ExpenseRecorded
+WorkerPaid
+LoanReceived
+LoanPrincipalRepaid
+LoanInterestPaid
+ChitContributionRecorded
+ChitPayoutReceived
+InternalAccountTransfer
+System
+NotificationGenerated
+NotificationResolved
+4.8.17 Final Event Flow Architecture
+                    BUSINESS ACTION
+                           ↓
+                    Domain Event
+                           ↓
+              Validate Business Invariants
+                           ↓
+               Update Relevant Aggregates
+                           ↓
+              Record Financial/Material Move
+                           ↓
+                Recalculate Derived Views
+                           ↓
+                Generate Notifications
+
+Example:
+
+Customer Payment Received
+          ↓
+Validate payment method and amount
+          ↓
+Create payment
+          ↓
+Create financial transaction
+          ↓
+Allocate against oldest orders
+          ↓
+Update outstanding
+          ↓
+Resolve overdue notification
+Result of 4.8
+
+We now understand:
+
+What meaningful business events exist
+What causes each state transition
+What records must change after each event
+How material and financial flows connect
+Which events are important for the MVP

@@ -1,0 +1,35 @@
+STEP 1
+Business & Problem Understanding
+        ↓
+STEP 2
+AS-IS → TO-BE Business Process Analysis
+        ↓
+STEP 3
+System Requirements & Scope
+        ↓
+STEP 4
+Domain Modeling
+        ↓
+STEP 5
+MVP Scope & Feature Prioritization
+        ↓
+STEP 6
+System Architecture
+        ↓
+STEP 7
+Database Design
+        ↓
+STEP 8
+API & Backend Design
+        ↓
+STEP 9
+Implementation
+        ↓
+STEP 10
+Integration
+        ↓
+STEP 11
+Testing, Security & Reliability
+        ↓
+STEP 12
+Deployment, Monitoring & Documentation

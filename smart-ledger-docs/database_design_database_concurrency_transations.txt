@@ -1,0 +1,960 @@
+Step 7.5 — Database Concurrency, Transactions & Locking
+
+This is where the database design becomes production-grade.
+
+So far we've established:
+
+What data exists, how it is related, and how we query it.
+
+Now we need to answer:
+
+What happens when two things happen at the same time?
+
+This matters a lot for SmartSilk because inventory and money cannot be allowed to become inconsistent.
+
+7.5.1 A Simple Example of the Problem
+
+Suppose SmartSilk has:
+
+Raw silk = 100 kg
+
+Two operations happen almost simultaneously.
+
+Request A
+
+Production needs:
+
+80 kg
+Request B
+
+Outsourcing needs:
+
+70 kg
+
+Both requests check the database.
+
+If both see:
+
+Available = 100 kg
+
+they may both proceed.
+
+Result:
+
+100 - 80 - 70
+= -50 kg
+
+But physically:
+
+You never had enough silk.
+
+This is a race condition.
+
+7.5.2 What Is a Race Condition?
+
+A race condition occurs when the result depends on the timing/order of concurrent operations.
+
+Conceptually:
+
+             Stock = 100
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+    Request A          Request B
+    reads 100          reads 100
+        │                 │
+      -80               -70
+        │                 │
+        └────────┬────────┘
+                 ▼
+             -50 kg
+
+This is unacceptable for inventory.
+
+The database must make the operation safe.
+
+7.5.3 ACID Revisited
+
+SmartSilk relies heavily on ACID.
+
+Atomicity
+
+A business operation is all-or-nothing.
+
+Example:
+
+Receive material
+ ├── Create receipt
+ ├── Create movement
+ └── Update purchase
+
+Either all succeed or all roll back.
+
+Consistency
+
+The database moves from one valid state to another.
+
+For example:
+
+input = output + wastage
+
+should remain valid.
+
+Isolation
+
+Concurrent operations shouldn't interfere incorrectly.
+
+Durability
+
+Once payment is committed:
+
+₹50,000 payment
+
+should remain recorded even if the server crashes immediately afterward.
+
+7.5.4 What Is a Database Transaction?
+
+A transaction groups related database operations.
+
+For example:
+
+BEGIN
+
+Create Payment
+Create Payment Allocation
+Create Financial Transaction
+
+COMMIT
+
+If something fails:
+
+ROLLBACK
+
+Then none of those changes should remain.
+
+7.5.5 SmartSilk Transaction Boundary
+
+A very important architectural rule:
+
+One business use case should usually correspond to one database transaction.
+
+Examples:
+
+ReceiveMaterial
+RecordCustomerPayment
+CompleteProductionBatch
+IssueOutsourcingMaterial
+ReceiveOutsourcingMaterial
+RecordExpense
+TransferMoney
+
+Each is an application-level transaction.
+
+7.5.6 Example — Receive Material
+
+Suppose:
+
+Purchase = 500 kg
+
+Supplier sends:
+
+300 kg
+
+The operation performs:
+
+1. Validate purchase
+2. Create material receipt
+3. Create inventory movement
+4. Update purchase receiving state
+5. Commit
+
+If step 3 fails:
+
+Receipt must NOT remain.
+Purchase must NOT claim 300 kg was received.
+
+That's atomicity.
+
+7.5.7 Example — Customer Payment
+
+Customer pays:
+
+₹50,000
+
+SmartSilk might need to:
+
+1. Validate customer
+2. Validate payment amount
+3. Determine allocations
+4. Create payment
+5. Create allocation(s)
+6. Create financial transaction
+7. Commit
+
+If financial transaction creation fails:
+
+Payment should not be committed independently.
+
+Otherwise you'd have:
+
+Customer paid according to the order ledger, but the money ledger says they didn't.
+
+7.5.8 Spring Boot Transaction
+
+Later, in your backend, a use-case service will conceptually have:
+
+@Transactional
+RecordPayment(...)
+
+The important thing isn't the annotation itself.
+
+The important architectural idea is:
+
+The transaction belongs around the complete business operation, not around an individual repository call.
+
+Bad mental model:
+
+savePayment()
+saveAllocation()
+saveFinancialTransaction()
+
+each independently committed.
+
+Better:
+
+RecordPayment()
+    ├── save payment
+    ├── save allocation
+    └── save financial transaction
+           ↓
+       ONE TRANSACTION
+7.5.9 Isolation Levels
+
+Databases provide different levels of isolation.
+
+The common levels are:
+
+READ UNCOMMITTED
+READ COMMITTED
+REPEATABLE READ
+SERIALIZABLE
+
+PostgreSQL doesn't actually allow dirty reads under READ UNCOMMITTED; it behaves like READ COMMITTED.
+
+For SmartSilk, we should generally start with:
+
+READ COMMITTED
+
+and use explicit locking where necessary.
+
+Don't automatically choose SERIALIZABLE for everything.
+
+7.5.10 READ COMMITTED
+
+Suppose:
+
+Transaction A
+reads stock
+
+Transaction B
+changes stock
+
+Transaction A
+reads again
+
+The second read may see the newly committed value.
+
+This is generally suitable for normal application operations.
+
+But it doesn't automatically solve every race condition.
+
+7.5.11 Why Isolation Alone Isn't Enough
+
+Consider:
+
+Stock = 100
+
+Transaction A:
+
+SELECT stock
+→ 100
+
+Transaction B:
+
+SELECT stock
+→ 100
+
+Both then decide:
+
+100 >= required quantity
+
+and proceed.
+
+Even though both transactions are isolated, the business operation can still race.
+
+We need a stronger mechanism.
+
+7.5.12 Pessimistic Locking
+
+Pessimistic locking means:
+
+Lock the relevant database row while performing the critical operation.
+
+Conceptually:
+
+Transaction A
+     │
+     ▼
+Lock inventory state
+     │
+     ▼
+Check stock = 100
+     │
+     ▼
+Consume 80
+     │
+     ▼
+Commit
+     │
+     ▼
+Release lock
+
+Transaction B must wait before modifying the same state.
+
+Then B sees:
+
+20 kg
+
+and correctly rejects a 70 kg request.
+
+7.5.13 But We Don't Currently Have an Inventory Balance Row
+
+This is an interesting design issue.
+
+Our source of truth is:
+
+material_movements
+
+not:
+
+inventory_balance
+
+So what exactly should we lock?
+
+There are two strategies.
+
+7.5.14 Strategy A — Lock a Stable Inventory Row
+
+Create a small derived state table such as:
+
+inventory_balances
+--------------------------------
+id
+product_type
+location
+quantity_kg
+version
+
+Example:
+
+RAW_SILK + WAREHOUSE = 100 kg
+
+The movements remain the audit/source ledger.
+
+The balance table becomes a transactional current-state projection.
+
+Then:
+
+Lock inventory balance row
+        ↓
+Check quantity
+        ↓
+Update quantity
+        ↓
+Create movement
+        ↓
+Commit
+
+This is often easier for concurrency and fast reads.
+
+7.5.15 Is That a Second Source of Truth?
+
+It can become dangerous if handled incorrectly.
+
+We must establish:
+
+material_movements
+        ↓
+SOURCE OF TRUTH
+
+inventory_balances
+        ↓
+DERIVED CURRENT STATE
+
+Every inventory-changing transaction must update both atomically:
+
+BEGIN
+
+Create movement
+Update balance
+
+COMMIT
+
+Never update the balance independently.
+
+If they disagree, the movement ledger can be used to reconstruct the balance.
+
+7.5.16 Should SmartSilk Use This?
+
+For a serious production-oriented design:
+
+Yes, I would introduce an inventory_balances table once concurrency and dashboard performance become important.
+
+But don't build a complicated inventory engine.
+
+Keep it simple:
+
+inventory_balances
+--------------------------------
+product_type
+location
+quantity_kg
+version
+
+Unique key:
+
+(product_type, location)
+
+This gives us a stable row to lock.
+
+7.5.17 Optimistic Locking
+
+Another strategy is optimistic locking.
+
+The balance row contains:
+
+version = 5
+
+Transaction A reads:
+
+quantity = 100
+version = 5
+
+Transaction B also reads:
+
+version = 5
+
+A updates:
+
+quantity = 20
+version = 6
+
+B then tries to update:
+
+WHERE version = 5
+
+but the database finds:
+
+version = 6
+
+So B's update fails.
+
+The application can then:
+
+retry
+
+or report:
+
+Inventory changed. Please retry.
+
+7.5.18 Optimistic vs Pessimistic Locking
+	Optimistic	Pessimistic
+Assumption	Conflicts uncommon	Conflicts possible
+Lock held	No	Yes
+Performance	Good under low contention	Good under high contention
+Failure	Version conflict	Wait/block
+Implementation	Version column	DB row lock
+SmartSilk use	Useful	Useful
+
+For critical inventory operations, pessimistic locking is easier to reason about initially.
+
+For ordinary entities such as:
+
+Customer
+Supplier
+Order
+
+optimistic locking can be useful.
+
+7.5.19 Lost Update
+
+Suppose:
+
+Account balance = 100,000
+
+Two operations both read it.
+
+A:
+
+100,000 → 80,000
+
+B:
+
+100,000 → 90,000
+
+If both write blindly:
+
+Final = 90,000
+
+A's update was lost.
+
+This is a lost update.
+
+Transactions and proper locking prevent this.
+
+7.5.20 Duplicate Payments
+
+Another concurrency problem is more subtle.
+
+Imagine the user presses:
+
+Record Payment
+
+twice.
+
+Network latency causes:
+
+Request A
+Request B
+
+to both reach the server.
+
+Without protection:
+
+₹50,000
++
+₹50,000
+=
+₹1,00,000
+
+But the customer only paid ₹50,000.
+
+This is why SmartSilk needs idempotency for critical operations.
+
+7.5.21 Idempotency
+
+An operation is idempotent when repeating the same request doesn't create multiple effects.
+
+For example:
+
+Request ID:
+8f2e...
+
+The backend records:
+
+request_id = 8f2e...
+
+If the same request arrives again:
+
+"I've already processed this."
+
+instead of creating another payment.
+
+For SmartSilk, this becomes especially important for:
+
+payments
+voice commands
+WhatsApp commands
+external webhook events
+7.5.22 Unique Business References Also Help
+
+For example:
+
+payment_number = PAY-2026-0015
+
+must be unique.
+
+But a business number alone isn't always enough for idempotency because a retry might generate a new payment number.
+
+Therefore:
+
+idempotency_key
+
+is better for API requests.
+
+We can add this during Step 8 API design.
+
+7.5.23 Deadlocks
+
+Locks introduce another problem:
+
+Deadlock
+
+Suppose:
+
+Transaction A
+locks Account 1
+waiting for Account 2
+
+Transaction B
+locks Account 2
+waiting for Account 1
+
+Neither can continue.
+
+A → Account 1 → waiting for 2
+B → Account 2 → waiting for 1
+
+This is a deadlock.
+
+7.5.24 How We Reduce Deadlocks
+
+Use a consistent locking order.
+
+For example, always lock accounts in ascending ID order.
+
+Instead of:
+
+A → Bank → Cash
+B → Cash → Bank
+
+make both:
+
+smaller account ID
+        ↓
+larger account ID
+
+The exact implementation comes later.
+
+Also:
+
+keep transactions short
+don't perform external API calls inside DB transactions
+don't wait for user input inside a transaction
+lock only what is necessary
+7.5.25 Never Call External APIs Inside a DB Transaction
+
+This is especially important for SmartSilk.
+
+Bad:
+
+BEGIN DB TRANSACTION
+
+Save payment
+
+Call WhatsApp API
+   ↓
+Wait 5 seconds
+
+COMMIT
+
+The database transaction is held while waiting for the network.
+
+That's dangerous.
+
+Better:
+
+DB transaction
+   ↓
+Commit business state
+   ↓
+Create notification/event
+   ↓
+External API
+
+We'll handle this properly in the integration architecture.
+
+7.5.26 Voice AI and Transactions
+
+Suppose user says:
+
+"Record ₹50,000 received from Ravi."
+
+Voice AI should not open a database transaction and directly manipulate tables.
+
+Instead:
+
+Voice
+ ↓
+Speech-to-text
+ ↓
+Intent extraction
+ ↓
+Structured command
+ ↓
+Validation
+ ↓
+User confirmation
+ ↓
+RecordPayment()
+ ↓
+@Transactional
+
+The final business operation is deterministic.
+
+AI stays outside the transaction.
+
+7.5.27 Transaction Boundary for Inventory
+Receive Material
+BEGIN
+  Create Receipt
+  Create Movement
+  Update Inventory Balance
+  Update Purchase Status
+COMMIT
+Production Consumption
+BEGIN
+  Lock Raw Silk Balance
+  Check quantity
+  Create Consumption Movement
+  Update Balance
+  Create/Update Production Batch
+COMMIT
+Production Completion
+BEGIN
+  Record output
+  Record wastage
+  Update finished inventory
+  Update batch status
+COMMIT
+7.5.28 Transaction Boundary for Outsourcing
+Issue silk
+BEGIN
+
+Lock raw silk balance
+Check availability
+Decrease warehouse stock
+Increase external WIP
+Create outsourcing job/movement
+
+COMMIT
+Receive warp
+BEGIN
+
+Decrease external WIP
+Increase finished stock
+Record received quantity
+Record wastage/difference
+Update outsourcing job
+
+COMMIT
+7.5.29 Transaction Boundary for Finance
+Customer Payment
+BEGIN
+
+Lock relevant obligation/allocation state
+Validate payment
+Create payment
+Create allocations
+Create financial transaction
+Update account state
+
+COMMIT
+Supplier Payment
+
+Same principle.
+
+Expense
+BEGIN
+
+Create expense
+Create financial transaction
+Update account state
+
+COMMIT
+Account Transfer
+BEGIN
+
+Lock source account
+Lock destination account
+Validate balance
+Create transfer
+Create OUT transaction
+Create IN transaction
+
+COMMIT
+7.5.30 What Should NOT Be One Transaction?
+
+Don't make this:
+
+Record Payment
+ +
+Send WhatsApp
+ +
+Generate PDF
+ +
+Call AI
+ +
+Send Email
+
+one giant transaction.
+
+Instead:
+
+Business transaction
+        ↓
+COMMIT
+        ↓
+Async/secondary work
+        ├── WhatsApp
+        ├── PDF
+        ├── Notification
+        └── analytics
+
+This makes the core financial operation reliable.
+
+7.5.31 Transaction Classification
+
+For SmartSilk, classify operations into:
+
+Critical
+
+Must be atomic and protected:
+
+Inventory consumption
+Inventory receipt
+Payment
+Payment allocation
+Financial transaction
+Account transfer
+Production completion
+Outsourcing issue/receipt
+Normal
+
+Standard transaction:
+
+Create customer
+Create supplier
+Create order
+Update contact
+Read-only
+Dashboard
+Reports
+Outstanding queries
+Inventory summary
+7.5.32 The Most Important Concurrency Rules
+
+For SmartSilk:
+
+Rule 1
+
+Never modify inventory without recording a material movement.
+
+Rule 2
+
+Never modify money balances without recording a financial transaction.
+
+Rule 3
+
+Inventory check + inventory modification must be atomic.
+
+Rule 4
+
+Payment + allocation + financial transaction must be atomic.
+
+Rule 5
+
+Don't perform external network calls inside core DB transactions.
+
+Rule 6
+
+Use idempotency for retry-prone operations.
+
+Rule 7
+
+Keep transactions short.
+
+Rule 8
+
+Use locking only where business correctness requires it.
+
+7.5.33 The SmartSilk Concurrency Model
+
+The final architecture looks like:
+
+                    API REQUEST
+                         │
+                         ▼
+                Application Service
+                         │
+                         ▼
+                 BEGIN TRANSACTION
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+             ▼                       ▼
+       Validate Rules          Acquire Lock
+                                     │
+                                     ▼
+                              Modify Source Data
+                                     │
+                                     ▼
+                              Create Ledger Entry
+                                     │
+                                     ▼
+                                  COMMIT
+                                     │
+                                     ▼
+                         Async Side Effects
+                    ┌────────┬─────────┬─────────┐
+                    ▼        ▼         ▼
+                 WhatsApp  Notify    Analytics
+
+This is the architecture you should have in mind when someone asks:
+
+"How will you prevent inconsistent inventory or duplicate financial transactions in SmartSilk?"
+
+7.5.34 Interview-Level Answer
+
+If an interviewer asks:
+
+"How do you handle concurrency in your inventory system?"
+
+A strong answer would be:
+
+"Inventory changes are transactional. I treat the inventory balance for a product and location as a critical shared resource. Before consuming or issuing material, the service validates availability inside the same database transaction and uses locking or optimistic versioning to prevent concurrent requests from consuming the same stock. The inventory movement and balance update are committed atomically. I also use idempotency for retry-prone operations such as payments and external commands."
+
+That's much stronger than simply saying:
+
+"I use @Transactional."
+
+Because you're explaining why and where.
+
+7.5.35 Final Database Layer
+
+We now have:
+
+                    SMARTSILK DB
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+        ▼                ▼                ▼
+     MASTER           SOURCE           DERIVED
+      DATA            LEDGERS           STATE
+        │                │                │
+        ▼                ▼                ▼
+    Parties        Material Moves    Inventory Balance
+    Accounts       Payments          Dashboard Views
+    etc.           Financial Txns    Reports
+                         │
+                         ▼
+                  ACID Transactions
+                         │
+                         ▼
+                 Concurrency Control
+
+The important philosophy is:
+
+Source ledgers preserve what happened. Derived state makes the current situation fast to understand. Transactions guarantee that both remain consistent.
+
+Step 7.5 complete
+
+We've now finished the database engineering portion of SmartSilk.
+
+Step 7 — Database Design
+7.0 Conceptual Database Design       ✓
+7.1 Detailed ER Design               ✓
+7.2 Normalization & Integrity        ✓
+7.3 Exact PostgreSQL Schema          ✓
+7.4 Query & Reporting Design         ✓
+7.5 Transactions & Concurrency       ✓

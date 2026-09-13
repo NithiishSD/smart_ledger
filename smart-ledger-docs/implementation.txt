@@ -1,0 +1,255 @@
+Absolutely. From Step 9 onward, I'll structure every implementation task so you can code it yourself, while still giving you enough guidance to avoid getting stuck.
+
+I won't just say "implement Purchase" and leave you guessing.
+
+We'll use this format:
+
+Implementation task format
+1. Goal
+2. Why we're building it
+3. Files/classes you should create
+4. Requirements
+5. Example
+6. Hints
+7. What you should NOT do
+8. Your task
+9. Review/checklist
+
+The example will be a different/simple example, so you understand the pattern without simply copying the SmartSilk solution.
+
+Example of how I'll teach you
+
+Suppose the task is:
+
+Implement Create Supplier
+
+I'll give you something like:
+
+1. Goal
+
+Create a REST API that allows SmartSilk to create a supplier.
+
+POST /api/v1/parties
+2. What you need to build
+parties/
+├── controller/
+│   └── PartyController
+├── dto/
+│   ├── CreatePartyRequest
+│   └── PartyResponse
+├── entity/
+│   └── Party
+├── repository/
+│   └── PartyRepository
+└── service/
+    └── PartyService
+3. Requirements
+
+Your API should accept:
+
+name
+phone
+address
+partyType
+
+Rules:
+
+name → required
+partyType → required
+phone → optional
+address → optional
+
+Backend should generate:
+
+id
+partyCode
+createdAt
+updatedAt
+status
+4. Example — different domain
+
+Suppose we're building a Library System.
+
+The API could be:
+
+POST /api/v1/books
+
+Request:
+
+{
+  "title": "Clean Code",
+  "author": "Robert Martin"
+}
+
+Backend generates:
+
+{
+  "id": "uuid",
+  "bookCode": "BOOK-001",
+  "title": "Clean Code",
+  "author": "Robert Martin",
+  "status": "AVAILABLE"
+}
+
+So you can recognize the pattern:
+
+Request DTO
+    ↓
+Controller
+    ↓
+Service
+    ↓
+Entity
+    ↓
+Repository
+    ↓
+Database
+    ↓
+Response DTO
+
+But you'll implement the SmartSilk version yourself.
+
+5. Hints
+
+I might tell you:
+
+Hint 1: The request DTO should contain only fields the client is allowed to provide.
+
+Hint 2: Don't let the frontend generate partyCode.
+
+Hint 3: PartyRepository should extend the appropriate Spring Data repository interface.
+
+Hint 4: The controller should delegate to the service instead of directly calling the repository.
+
+Hint 5: Think about where partyCode generation belongs.
+
+I won't immediately give you the code.
+
+6. Your task
+
+You implement:
+
+Party entity
+CreatePartyRequest
+PartyResponse
+PartyRepository
+PartyService
+PartyController
+Flyway migration
+
+Then test:
+
+POST /api/v1/parties
+7. Then you show me your implementation
+
+You can send:
+
+"My implementation is:"
+
+and paste the code.
+
+I'll review it for:
+
+correctness
+Spring conventions
+architecture
+security
+database design
+validation
+unnecessary complexity
+SmartSilk business-rule violations
+
+If there's a bug, I'll explain why it happens and guide you toward the fix, rather than immediately replacing your entire code.
+
+We'll also gradually increase difficulty
+
+The first tasks will be relatively straightforward:
+
+Party
+   ↓
+Purchase
+
+Then:
+
+Purchase
+   ↓
+Material Receipt
+   ↓
+Inventory Movement
+
+Then we'll introduce harder concepts:
+
+Transactions
+   ↓
+Concurrency
+   ↓
+Pessimistic locking
+   ↓
+Payment allocation
+   ↓
+Idempotency
+   ↓
+Security
+   ↓
+Async notifications
+
+So you're not expected to understand everything before coding.
+
+You'll learn the architecture by implementing it.
+
+One more thing: I'll give you "expected behavior", not just code requirements
+
+For example, for material receipt:
+
+Purchase:
+250 kg
+
+Already received:
+100 kg
+
+New receipt:
+80 kg
+
+Expected:
+
+Purchase received = 180 kg
+Remaining = 70 kg
+Inventory = +80 kg
+
+But:
+
+New receipt = 100 kg
+Remaining = 70 kg
+
+Expected:
+
+❌ Reject
+PURCHASE_RECEIPT_EXCEEDED
+
+That lets you write your own implementation and know what the result should be.
+
+So our implementation workflow will be
+ME
+ │
+ ├── Explain concept
+ ├── Give task
+ ├── Show architecture
+ ├── Give example
+ ├── Give hints
+ └── Give expected behavior
+       │
+       ▼
+     YOU CODE
+       │
+       ▼
+   YOU SEND CODE
+       │
+       ▼
+     I REVIEW
+       │
+       ├── Fix bugs
+       ├── Explain mistakes
+       ├── Improve design
+       └── Give next task
+
+This is much better for your goal than me generating the entire SmartSilk backend for you.

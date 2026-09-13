@@ -1,0 +1,812 @@
+Step 4.11 — Finalize the Domain Model
+
+This is the final stage of domain modeling.
+
+Until now, we identified:
+
+Domain concepts
+Attributes
+Relationships
+Lifecycles
+Business invariants
+Aggregate boundaries
+Domain events
+Cross-module dependencies
+Missing concepts through validation
+
+Now we freeze the approved domain model before moving to architecture and database design.
+
+The important principle is:
+
+After Step 4.11, we should not casually add entities during implementation. Any new concept must be treated as a deliberate requirement change.
+
+4.11.1 Final Domain Model Structure
+
+We will organize the model into logical domains rather than treating every entity as unrelated.
+
+SmartSilk can be divided into these bounded modules:
+
+1. Party Management
+2. Procurement
+3. Inventory and Material
+4. Customer Orders and Sales
+5. Production
+6. Outsourcing
+7. Workforce
+8. Finance
+9. Documents
+10. Notifications
+11. Reporting and Dashboard
+
+This does not mean separate microservices.
+
+It means logical boundaries inside one modular monolith.
+
+4.11.2 Party Management Domain
+
+This domain contains people or organizations that interact with SmartSilk.
+
+Entities
+Customer
+
+Represents a person or business purchasing silk or warp.
+
+Important responsibilities:
+
+Customer identity
+Contact details
+Customer-specific credit preferences
+Customer status
+Relationship with orders and payments
+Supplier
+
+Represents raw-silk suppliers.
+
+Responsibilities:
+
+Supplier identity
+Contact details
+Default credit terms
+Purchase history
+Supplier payable relationship
+Manufacturer
+
+Represents external warp manufacturers.
+
+Responsibilities:
+
+Manufacturer identity
+Contact details
+Manufacturing rates
+Outsourcing history
+Amount payable for completed jobs
+Worker
+
+Represents internal workers.
+
+Responsibilities:
+
+Worker identity
+Worker type
+Payment basis
+Current rate
+Work history
+Party relationships
+Customer 1 ─── N Customer Orders
+Customer 1 ─── N Payments
+
+Supplier 1 ─── N Purchases
+Supplier 1 ─── N Supplier Payments
+
+Manufacturer 1 ─── N Outsourcing Jobs
+
+Worker 1 ─── N Work Records
+4.11.3 Procurement Domain
+
+This domain handles purchasing raw silk from suppliers.
+
+Final entities
+Purchase
+
+Represents what the business ordered or bought from a supplier.
+
+It answers:
+
+What did we purchase, from whom, at what price, and under what terms?
+
+It does not itself represent physically received inventory.
+
+Material Receipt
+
+Represents what physically arrived from a purchase.
+
+It answers:
+
+How much material actually arrived and when?
+
+One purchase may have multiple receipts.
+
+Purchase 1 ─── N Material Receipts
+Purchase-related payment obligation
+
+Supplier payable is not a separate manually maintained entity.
+
+It is derived from:
+
+Credit Purchases
+− Supplier Payments
+− Returns/Adjustments
+Procurement flow
+Supplier
+   ↓
+Purchase
+   ↓
+Material Receipt
+   ↓
+Material Movement
+   ↓
+Raw Silk Inventory
+4.11.4 Inventory and Material Domain
+
+This is one of the most important domains in SmartSilk.
+
+The system should not treat inventory as merely a number stored in a table.
+
+Inventory should represent the history of physical material movement.
+
+Final core concept
+Material Movement
+
+Every change in material quantity must create a material movement.
+
+Examples:
+
+Material received
+Material returned to supplier
+Raw silk sold directly
+Raw silk consumed in production
+Raw silk sent to manufacturer
+Finished warp received from manufacturer
+Production output
+Wastage
+Customer return
+Manual adjustment with reason
+Material movement structure
+
+Conceptually:
+
+Material Movement
+├── Movement ID
+├── Date
+├── Product/material type
+├── Quantity
+├── Movement type
+├── Source reference
+├── Related business operation
+└── Notes/reason
+
+Do not yet decide database columns. This is still the domain level.
+
+Inventory states
+
+Inventory is logically divided into locations/states:
+
+AVAILABLE_RAW_SILK
+INTERNAL_WIP
+EXTERNAL_WIP
+AVAILABLE_FINISHED_WARP
+RETURNED_OR_REJECTED_MATERIAL
+WASTAGE
+
+These may be represented through movement types and location/state fields rather than separate entities.
+
+Important decision: Raw Material Lot
+
+A separate Raw Material Lot entity is not mandatory at this stage.
+
+Why?
+
+Because the current business primarily needs:
+
+Total available raw silk
+Material received
+Material consumed
+Material sent outside
+Material returned
+Wastage
+Current external WIP
+
+It does not necessarily require strict batch-level traceability for every individual silk bundle.
+
+Therefore:
+
+Do not force a lot-based model unless future traceability requirements justify it.
+
+If later the business needs FIFO by purchase lot, supplier-quality tracking, or exact source tracing, Raw Material Lot can be introduced.
+
+4.11.5 Customer Order and Sales Domain
+Final entities
+Customer Order
+
+Represents the customer’s demand or commitment.
+
+It answers:
+
+What does the customer want, by when, and under what agreed terms?
+
+Order Item / Order Line
+
+This should be included in the final conceptual model because it gives flexibility for multiple products or specifications in one order.
+
+Customer Order 1 ─── N Order Items
+
+Even if the MVP initially allows only one item per order, the domain should not be unnecessarily restricted.
+
+Each order item may contain:
+
+Product type
+Required weight
+Rate
+Warp specification
+Amount
+Fulfillment status
+Order flow
+Customer
+   ↓
+Customer Order
+   ↓
+Order Item
+   ↓
+Production / Outsourcing / Existing Stock
+   ↓
+Delivery
+   ↓
+Payment / Bill
+Order status
+
+Operational status:
+
+PLACED
+CONFIRMED
+IN_PROGRESS
+READY
+DELIVERED
+COMPLETED
+CANCELLED
+
+Payment status must remain separate:
+
+UNPAID
+PARTIALLY_PAID
+PAID
+OVERPAID
+
+Do not combine operational status and payment status into one enum.
+
+4.11.6 Payment Domain
+
+Payment is a business settlement event.
+
+It answers:
+
+Who paid whom, how much, and for which obligation?
+
+Final entities
+Payment
+
+Represents the actual settlement instruction or business payment.
+
+Examples:
+
+Customer payment
+Supplier payment
+Worker payment
+Manufacturer payment
+Refund settlement
+Payment Allocation
+
+Represents how a payment is applied to one or more obligations.
+
+This is essential.
+
+Payment 1 ─── N Payment Allocations
+
+A payment allocation can reference:
+
+Customer order
+Supplier purchase
+Work record
+Outsourcing job
+Other payable/receivable
+Example
+Payment P001 = ₹50,000
+
+Allocations:
+- Order O001 = ₹30,000
+- Order O002 = ₹20,000
+
+Without Payment Allocation, outstanding calculations become unreliable.
+
+Advance payment
+
+If a customer pays before an order is created or before the full amount is known, the payment should be marked as:
+
+ADVANCE
+
+It must not automatically be counted as completed sales revenue.
+
+4.11.7 Production Domain
+Final entity
+Production Batch
+
+Represents an internal manufacturing operation.
+
+Responsibilities:
+
+Production type
+Input material
+Output material
+Wastage
+WIP state
+Related orders
+Production dates
+Completion status
+Relationships
+Production Batch N ─── N Order Items
+Production Batch 1 ─── N Work Records
+Production Batch → Material Movements
+
+A single batch may fulfill multiple customer orders.
+
+One order may also be fulfilled through multiple production batches.
+
+Therefore, do not force:
+
+One Order = One Production Batch
+Production flow
+Raw Silk Available
+       ↓
+Material Consumption
+       ↓
+Internal WIP
+       ↓
+Production Completion
+       ↓
+Finished Warp Inventory
+       ↓
+Order Fulfillment
+4.11.8 Outsourcing Domain
+Final entity
+Outsourcing Job
+
+Represents raw silk sent to an external manufacturer.
+
+Responsibilities:
+
+Manufacturer
+Product/warp type
+Quantity sent
+Quantity received
+Expected output
+Wastage/difference
+Manufacturing rate
+Related customer order if any
+Payment obligation
+Job status
+Outsourcing flow
+Raw Silk Available
+       ↓
+Outsourcing Job Created
+       ↓
+Raw Silk Issued
+       ↓
+External WIP
+       ↓
+Warp Received
+       ↓
+Finished Warp Inventory
+       ↓
+Manufacturer Payable
+Important rule
+
+Outsourcing may happen:
+
+Against a customer order
+Before a customer order
+For expected demand
+Due to internal capacity shortage
+Due to worker unavailability
+
+Therefore, Customer Order should be an optional reference, not a mandatory parent.
+
+4.11.9 Workforce Domain
+Final entities
+Work Record
+
+Represents work performed by a worker.
+
+It answers:
+
+What work did the worker perform, when, and how much was earned?
+
+Worker Payment
+
+This may be represented using the generic Payment entity with worker-related allocation.
+
+For the MVP, a separate WorkerPayment entity is not strictly necessary if:
+
+Worker payments are recorded through Payment
+Work records have payment status
+Payment allocations can link to work records
+Important distinction
+Work completed ≠ Money paid
+
+Example:
+
+Worker completed ₹8,000 worth of work
+Only ₹5,000 paid
+Remaining payable = ₹3,000
+
+Historical rates must be preserved in the Work Record.
+
+If the worker’s rate changes next month, old work records must not be recalculated.
+
+4.11.10 Finance Domain
+
+This domain records actual money movement.
+
+Final entities
+Financial Account
+
+Represents a money-holding account.
+
+Types:
+
+CASH
+BANK
+
+Each bank account must be separately represented.
+
+Examples:
+
+Cash Account
+Bank Account 1
+Bank Account 2
+Bank Account 3
+Financial Transaction
+
+Represents actual movement of money.
+
+Examples:
+
+Customer receipt
+Supplier payment
+Worker payment
+Expense payment
+Loan received
+Loan repayment
+Chit contribution
+Chit payout
+Personal drawing
+Cash withdrawal
+Bank transfer
+Refund
+Finance flow
+Business Event
+      ↓
+Payment / Expense / Loan / Chit / Transfer
+      ↓
+Financial Transaction
+      ↓
+Financial Account
+Financial transaction rules
+
+Every financial transaction must have:
+
+Amount
+Date
+Account
+Direction
+Transaction type
+Business reason
+Related reference where applicable
+
+Do not allow unexplained money movement except explicitly marked manual adjustment.
+
+4.11.11 Expense Domain
+Final entity
+Expense
+
+Represents a business or personal expenditure classification.
+
+Examples:
+
+Electricity
+Transport
+Rent
+Worker-related expense
+Office expense
+Repairs
+Personal drawing
+Other operating expenses
+
+Expense and Financial Transaction should remain conceptually separate.
+
+Expense → Financial Transaction
+
+This lets the system distinguish:
+
+Money left the account
+
+from:
+
+What that money was used for
+4.11.12 Loan Domain
+Final entity
+Loan
+
+Represents a borrowing obligation.
+
+It tracks:
+
+Principal
+Lender
+Start date
+Interest terms
+Outstanding principal
+Repayment history
+Completion status
+
+Loan movements are recorded through Financial Transactions.
+
+But the transaction type must distinguish:
+
+LOAN_RECEIVED
+LOAN_PRINCIPAL_REPAYMENT
+LOAN_INTEREST_PAYMENT
+4.11.13 Chit Domain
+Final entity
+Chit
+
+Represents a chit or similar financial commitment/investment.
+
+Its contributions and payouts are recorded as financial transactions.
+
+Rules:
+
+Cash-only
+Contribution is not operating expense
+Payout is not operating revenue
+Chit obligation/history must be preserved
+4.11.14 Documents Domain
+Final entity
+Bill / Invoice
+
+Represents a formal business document.
+
+It may be associated with:
+
+Customer order
+Purchase
+Expense
+Payment
+GST transaction
+
+A bill can exist independently of payment timing.
+
+Document principle
+Document ≠ Business Transaction ≠ Payment
+
+A document supports evidence and compliance, but should not replace the underlying transaction.
+
+4.11.15 Notification Domain
+Final entities
+Notification
+
+Represents an actual reminder or alert.
+
+Notification Configuration
+
+Represents configurable reminder rules.
+
+Examples:
+
+Supplier due reminder
+Day-8 reminder
+Day-10 reminder
+Customer outstanding reminder
+Loan repayment reminder
+Pending outsourcing reminder
+
+Notifications observe the system.
+
+They do not own the underlying financial or operational truth.
+
+4.11.16 Final Entity List
+Core entities
+Customer
+Supplier
+Manufacturer
+Worker
+
+Purchase
+Material Receipt
+Material Movement
+
+Customer Order
+Order Item
+
+Production Batch
+Outsourcing Job
+Work Record
+
+Payment
+Payment Allocation
+
+Financial Account
+Financial Transaction
+Expense
+Refund
+Loan
+Chit
+
+Bill / Invoice
+Notification
+Notification Configuration
+Supporting concepts
+Money
+Weight
+Credit Period
+Due Date
+Contact Information
+Address
+Warp Specification
+Date / DateTime
+Product Type
+Payment Method
+Transaction Type
+Status Types
+4.11.17 Concepts Explicitly Not Made Independent Entities
+
+To avoid unnecessary complexity, these should remain derived values or controlled concepts.
+
+Do not create manually editable entities for:
+Customer Outstanding
+Supplier Outstanding
+Cash Balance
+Bank Balance
+Available Inventory
+Finished Stock Balance
+External WIP Balance
+Total Profit
+Total Loss
+Pending Commitments
+
+These are calculated from source records.
+
+Do not initially create separate entities for:
+Raw Material Lot
+Inventory Balance
+Customer Outstanding Record
+Supplier Outstanding Record
+Profit Record
+Dashboard Metric
+
+They can be introduced later only if performance or traceability requires them.
+
+4.11.18 Final Domain Relationship Overview
+Customer
+   └── Customer Order
+          └── Order Item
+                 ├── Production Batch
+                 ├── Outsourcing Job
+                 └── Payment Allocation
+
+Supplier
+   └── Purchase
+          └── Material Receipt
+                 └── Material Movement
+
+Material Movement
+   ├── Raw Silk Inventory
+   ├── Internal WIP
+   ├── External WIP
+   └── Finished Warp Inventory
+
+Worker
+   └── Work Record
+          └── Payment Allocation
+
+Manufacturer
+   └── Outsourcing Job
+
+Payment
+   └── Payment Allocation
+          └── Business Obligation
+
+Financial Account
+   └── Financial Transaction
+
+Expense
+   └── Financial Transaction
+
+Loan
+   └── Financial Transaction
+
+Chit
+   └── Financial Transaction
+
+Business Entities
+   └── Bill / Invoice
+   └── Notification
+4.11.19 Domain Model Freeze Rules
+
+From this point onward:
+
+Rule 1
+
+Do not add an entity merely because it sounds technically useful.
+
+Ask:
+
+Does it represent an independent business concept, identity, lifecycle, or obligation?
+
+Rule 2
+
+Do not duplicate derived values.
+
+For example, avoid independently storing:
+
+customer.outstanding
+supplier.outstanding
+inventory.availableWeight
+
+unless there is a carefully controlled projection/cache.
+
+Rule 3
+
+Do not mix business events and financial transactions.
+
+Rule 4
+
+Do not let one module directly manipulate every other module’s internal data.
+
+Rule 5
+
+Every inventory change must have a material movement.
+
+Rule 6
+
+Every actual money change must have a financial transaction.
+
+Rule 7
+
+Every settlement requiring allocation must preserve payment allocation history.
+
+Rule 8
+
+Historical rates, prices, and quantities must never be silently recalculated using current values.
+
+Final Result of Step 4
+
+The domain model is now sufficiently finalized for the next engineering stage.
+
+We have established:
+
+Final entities
+Value objects
+Relationships
+State models
+Business invariants
+Aggregate boundaries
+Events
+Dependencies
+Missing concepts
+Concepts intentionally excluded
+Derived metrics
+Domain freeze rules
+Step 4 is now complete.
+
+The next major phase is:
+
+

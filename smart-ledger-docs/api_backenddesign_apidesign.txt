@@ -1,0 +1,999 @@
+Step 8.6 — REST API Design
+
+Now we turn the database/domain design into the actual contract between your Kotlin frontend and Spring Boot backend.
+
+The key idea:
+
+Frontend asks the backend to perform business operations. It does not directly manipulate database concepts.
+
+8.6.1 What is a REST API?
+
+For SmartSilk:
+
+Kotlin Frontend
+      │
+      │ HTTP + JSON
+      ▼
+Spring Boot REST API
+      │
+      ▼
+Application Service
+      │
+      ▼
+Domain Rules
+      │
+      ▼
+Repository
+      │
+      ▼
+PostgreSQL
+
+Example:
+
+The user taps "Receive Material".
+
+The frontend should not say:
+
+"Insert a row into material_movements."
+
+Instead it says:
+
+"Receive 48.5 kg for purchase PUR-2026-0012."
+
+The backend then decides:
+
+Is the purchase valid?
+Can this quantity be received?
+Is the supplier valid?
+How much has already been received?
+Is the receipt valid?
+What inventory movement should be created?
+Does the purchase status need updating?
+Should supplier payable change?
+
+All of that belongs to the backend.
+
+8.6.2 Resource-oriented API design
+
+Use:
+
+/api/v1/...
+
+The v1 gives you API versioning.
+
+For example:
+
+/api/v1/customers
+/api/v1/suppliers
+/api/v1/purchases
+/api/v1/orders
+/api/v1/payments
+/api/v1/inventory
+
+Don't create URLs like:
+
+/createCustomer
+/addCustomer
+/saveCustomer
+/getCustomer
+/updateCustomer
+
+Instead use HTTP semantics:
+
+POST   /api/v1/customers
+GET    /api/v1/customers/{id}
+PUT    /api/v1/customers/{id}
+PATCH  /api/v1/customers/{id}
+DELETE /api/v1/customers/{id}
+
+Although for important financial records, you generally shouldn't actually delete them.
+
+8.6.3 HTTP methods
+
+You need to know these very well for interviews too.
+
+Method	Meaning	SmartSilk example
+GET	Read	Get customer
+POST	Create / execute operation	Create purchase
+PUT	Replace resource	Replace customer profile
+PATCH	Partial update	Change customer phone
+DELETE	Delete	Remove inactive master data
+
+For business operations, POST action endpoints are often appropriate.
+
+Example:
+
+POST /api/v1/purchases/{purchaseId}/receipts
+
+means:
+
+Record a material receipt for this purchase.
+
+Another:
+
+POST /api/v1/production-batches/{id}/complete
+
+means:
+
+Complete this production batch.
+
+This is much better than exposing database tables directly.
+
+8.6.4 Path parameter vs query parameter vs request body
+
+This is important.
+
+Path parameter
+
+Use it to identify a specific resource.
+
+GET /api/v1/customers/123
+
+Here:
+
+123
+
+is the customer ID.
+
+Query parameter
+
+Use it for filtering, searching, sorting or pagination.
+
+GET /api/v1/orders?status=PENDING
+
+or:
+
+GET /api/v1/orders?customerId=123&status=PENDING
+
+or:
+
+GET /api/v1/orders?page=0&size=20
+Request body
+
+Use it when sending structured data.
+
+POST /api/v1/customers
+{
+  "name": "ABC Silks",
+  "phone": "9876543210",
+  "address": "Coimbatore"
+}
+
+Simple rule:
+
+Path = which resource
+Query = how to search/filter it
+Body = what data you're sending
+
+8.6.5 SmartSilk API structure
+
+Here's the first production-style API map.
+
+Parties
+POST   /api/v1/parties
+GET    /api/v1/parties/{id}
+GET    /api/v1/parties
+PATCH  /api/v1/parties/{id}
+
+You can filter:
+
+GET /api/v1/parties?type=CUSTOMER
+GET /api/v1/parties?type=SUPPLIER
+GET /api/v1/parties?search=Ramesh
+8.6.6 Purchase APIs
+
+Create purchase:
+
+POST /api/v1/purchases
+
+Request:
+
+{
+  "supplierId": "uuid",
+  "purchaseDate": "2026-09-11",
+  "orderedWeightKg": 250.000,
+  "ratePerKg": 4250.00,
+  "paymentType": "CREDIT",
+  "creditDays": 30,
+  "notes": "Raw silk purchase"
+}
+
+Notice something important.
+
+The frontend sends:
+
+orderedWeightKg
+ratePerKg
+
+but does not send:
+
+supplierOutstanding
+
+because outstanding is calculated by the backend.
+
+Get purchase
+GET /api/v1/purchases/{purchaseId}
+List purchases
+GET /api/v1/purchases
+
+with filters:
+
+GET /api/v1/purchases?supplierId=...&status=PARTIALLY_RECEIVED
+8.6.7 Material receipt API
+
+This is one of the most important SmartSilk APIs.
+
+POST /api/v1/purchases/{purchaseId}/receipts
+
+Request:
+
+{
+  "receiptDate": "2026-09-11",
+  "receivedWeightKg": 100.000,
+  "acceptedWeightKg": 98.500,
+  "rejectedWeightKg": 1.500,
+  "notes": "One portion rejected"
+}
+
+Backend:
+
+Validate purchase
+       ↓
+Validate remaining receivable quantity
+       ↓
+Validate accepted + rejected <= received
+       ↓
+Create material_receipt
+       ↓
+Create material movement
+       ↓
+Update purchase receiving status
+       ↓
+COMMIT
+
+All of this occurs inside one transaction.
+
+8.6.8 Why NOT expose this?
+
+Don't create:
+
+POST /api/v1/inventory/movements
+
+for normal frontend use.
+
+It would allow someone to say:
+
+{
+  "movementType": "RECEIPT",
+  "quantityKg": 500
+}
+
+without necessarily having a valid purchase.
+
+That creates a dangerous situation:
+
+Inventory says +500 kg
+        ↓
+Where did it come from?
+        ↓
+No purchase
+        ↓
+Data inconsistency
+
+Instead:
+
+Purchase Receipt
+      ↓
+Business validation
+      ↓
+Material Movement
+
+The movement is a consequence of a business operation, not something the user casually edits.
+
+This is one of the most important architectural decisions in SmartSilk.
+
+8.6.9 Inventory APIs
+
+Read-only inventory APIs:
+
+GET /api/v1/inventory/summary
+GET /api/v1/inventory/movements
+GET /api/v1/inventory/external-wip
+
+Example:
+
+GET /api/v1/inventory/summary
+
+Response:
+
+{
+  "rawSilkKg": 324.500,
+  "koraWarpKg": 85.200,
+  "silkWarpKg": 42.750,
+  "vudaWarpKg": 31.000
+}
+
+Again, these values are calculated by the backend.
+
+8.6.10 Customer Order APIs
+
+Create:
+
+POST /api/v1/orders
+
+Request:
+
+{
+  "customerId": "uuid",
+  "orderDate": "2026-09-11",
+  "requiredDate": "2026-09-20",
+  "items": [
+    {
+      "productType": "SILK_WARP",
+      "requiredWeightKg": 50.000,
+      "warpSpecification": "60s × 40s",
+      "ratePerKg": 4800.00
+    }
+  ]
+}
+
+Why is items an array?
+
+Because one order can contain:
+
+Order
+ ├── Kora Warp
+ ├── Silk Warp
+ └── Vuda Warp
+Get order
+GET /api/v1/orders/{id}
+Update order
+PATCH /api/v1/orders/{id}
+
+But the backend must check:
+
+Has production started?
+
+If yes:
+
+409 CONFLICT
+
+Example:
+
+{
+  "status": 409,
+  "code": "ORDER_LOCKED",
+  "message": "Order cannot be modified after production has started."
+}
+8.6.11 Payment API
+
+This is another critical one.
+
+POST /api/v1/payments
+
+Request:
+
+{
+  "partyId": "customer-uuid",
+  "direction": "IN",
+  "amount": 150000.00,
+  "paymentMethod": "BANK_TRANSFER",
+  "financialAccountId": "bank-account-uuid",
+  "paymentDate": "2026-09-11",
+  "allocations": [
+    {
+      "orderItemId": "uuid",
+      "amount": 100000.00
+    },
+    {
+      "orderItemId": "uuid",
+      "amount": 50000.00
+    }
+  ]
+}
+
+Backend performs:
+
+Validate payment
+       ↓
+Validate allocations
+       ↓
+Create Payment
+       ↓
+Create Payment Allocations
+       ↓
+Create Financial Transaction
+       ↓
+Update derived outstanding
+       ↓
+Commit
+
+The frontend doesn't calculate the final outstanding.
+
+8.6.12 Customer outstanding
+GET /api/v1/customers/{customerId}/outstanding
+
+Possible response:
+
+{
+  "customerId": "uuid",
+  "totalOrderValue": 850000.00,
+  "totalAllocatedPayments": 600000.00,
+  "outstanding": 250000.00
+}
+
+The backend calculates:
+
+Outstanding
+=
+Order obligations
+-
+Payment allocations
+8.6.13 Production APIs
+
+Create batch:
+
+POST /api/v1/production-batches
+
+Start:
+
+POST /api/v1/production-batches/{id}/start
+
+Complete:
+
+POST /api/v1/production-batches/{id}/complete
+
+The completion operation should atomically handle:
+
+Raw silk consumption
+        ↓
+Production output
+        ↓
+Wastage
+        ↓
+Order allocation
+        ↓
+Inventory updates
+
+This should not be five independent API calls from the frontend.
+
+Why?
+
+Because imagine:
+
+Consumption succeeds
+Output succeeds
+Wastage fails
+
+You now have inconsistent inventory.
+
+One business operation → one transaction.
+
+8.6.14 Outsourcing APIs
+
+Create:
+
+POST /api/v1/outsourcing-jobs
+
+Issue material:
+
+POST /api/v1/outsourcing-jobs/{id}/issue
+
+Receive material:
+
+POST /api/v1/outsourcing-jobs/{id}/receive
+
+Example:
+
+Issue 100 kg
+     ↓
+Raw stock -100 kg
+     ↓
+External WIP +100 kg
+
+Then:
+
+Receive 97 kg
+     ↓
+External WIP -97 kg
+     ↓
+Finished stock +97 kg
+     ↓
+3 kg wastage/difference
+
+The API should represent these business actions.
+
+8.6.15 Worker APIs
+POST /api/v1/work-records
+GET  /api/v1/work-records
+GET  /api/v1/workers/{id}/payable
+
+Example:
+
+{
+  "workerId": "uuid",
+  "workDate": "2026-09-11",
+  "workType": "WARPING",
+  "quantityKg": 45.500,
+  "rate": 120.00
+}
+
+Historical rate is stored with the work record.
+
+If the rate changes tomorrow:
+
+Old work = ₹120/kg
+New work = ₹135/kg
+
+The old record remains ₹120/kg.
+
+8.6.16 Finance APIs
+
+Accounts:
+
+GET  /api/v1/finance/accounts
+POST /api/v1/finance/accounts
+
+Transactions:
+
+GET /api/v1/finance/transactions
+
+Expenses:
+
+POST /api/v1/expenses
+GET  /api/v1/expenses
+
+Account transfer:
+
+POST /api/v1/finance/transfers
+
+Example:
+
+Bank A
+  ↓ ₹50,000
+Cash
+
+This is not revenue.
+
+It is:
+
+Bank A ↓
+Cash   ↑
+
+The backend must preserve that distinction.
+
+8.6.17 Dashboard APIs
+
+Don't make the frontend call 15 different endpoints just to display the dashboard.
+
+Create:
+
+GET /api/v1/dashboard/summary
+
+Response could contain:
+
+{
+  "cash": 125000.00,
+  "bank": 850000.00,
+  "rawSilkKg": 324.500,
+  "customerOutstanding": 625000.00,
+  "supplierPayable": 410000.00,
+  "externalWipKg": 82.500,
+  "pendingOrders": 12
+}
+
+This is a read model, not a new source of truth.
+
+8.6.18 Pagination
+
+Never assume:
+
+GET /customers
+
+will always return 10 customers.
+
+One day you could have:
+
+10
+100
+10,000
+100,000
+
+Use:
+
+GET /api/v1/customers?page=0&size=20
+
+Response:
+
+{
+  "content": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 143,
+  "totalPages": 8
+}
+
+For lists, support:
+
+page
+size
+sort
+
+and useful filters.
+
+8.6.19 Validation
+
+Suppose the frontend sends:
+
+{
+  "amount": -5000
+}
+
+Backend rejects it.
+
+Likewise:
+
+weight <= 0
+creditDays < 0
+acceptedWeight > receivedWeight
+
+should fail validation.
+
+But remember:
+
+DTO validation is not the same as business validation.
+
+For example:
+
+amount > 0
+
+is basic validation.
+
+But:
+
+Payment allocation cannot exceed outstanding
+
+is a business rule.
+
+8.6.20 Error handling
+
+Don't return random errors from every controller.
+
+Use a consistent structure.
+
+For example:
+
+{
+  "timestamp": "2026-09-11T19:20:00+05:30",
+  "status": 409,
+  "code": "INSUFFICIENT_INVENTORY",
+  "message": "Only 42.500 kg of raw silk is available.",
+  "path": "/api/v1/production-batches"
+}
+
+Useful SmartSilk error codes:
+
+RESOURCE_NOT_FOUND
+INVALID_REQUEST
+DUPLICATE_BUSINESS_NUMBER
+INSUFFICIENT_INVENTORY
+ORDER_LOCKED
+INVALID_STATE_TRANSITION
+PAYMENT_ALLOCATION_EXCEEDED
+INVALID_PAYMENT_ALLOCATION
+PURCHASE_RECEIPT_EXCEEDED
+CONCURRENT_MODIFICATION
+DUPLICATE_REQUEST
+
+This makes the Kotlin frontend much easier to develop.
+
+8.6.21 HTTP status code strategy
+
+Remember this table:
+
+Situation	Status
+Successful GET	200
+Created resource	201
+Successful action with no response	204
+Invalid request	400
+Not authenticated	401
+Not authorized	403
+Resource doesn't exist	404
+Business/concurrency conflict	409
+Validation/domain error, if you choose this convention	422
+Unexpected server failure	500
+
+For SmartSilk, 409 is particularly important.
+
+Example:
+
+Two users try to consume the same 20 kg.
+
+User A → stock 20 kg
+User B → stock 20 kg
+
+Only one should succeed.
+
+The other gets:
+
+409 CONFLICT
+INSUFFICIENT_INVENTORY
+8.6.22 Idempotency
+
+This is a very important production concept.
+
+Imagine the user presses:
+
+Pay ₹50,000
+
+Network becomes slow.
+
+Frontend retries.
+
+Without protection:
+
+Request 1 → ₹50,000 recorded
+Request 2 → ₹50,000 recorded
+
+Now:
+
+Actual payment = ₹50,000
+System = ₹100,000
+
+For important retry-sensitive operations, use an idempotency key.
+
+Example:
+
+Idempotency-Key: 8f4c...
+
+Then:
+
+First request
+    ↓
+Process payment
+    ↓
+Store result against key
+
+Retry with same key
+    ↓
+Return previous result
+
+This is particularly useful for:
+
+payments
+voice commands
+WhatsApp webhooks
+external callbacks
+important creation operations
+8.6.23 Concurrency handling
+
+Suppose:
+
+Raw silk = 100 kg
+
+Two production requests arrive:
+
+Request A → consumes 80 kg
+Request B → consumes 50 kg
+
+Both cannot succeed.
+
+The backend transaction must:
+
+BEGIN
+ ↓
+Lock inventory balance
+ ↓
+Read current stock
+ ↓
+Validate requested quantity
+ ↓
+Modify inventory
+ ↓
+Create movement
+ ↓
+COMMIT
+
+If B arrives after A:
+
+Available = 20 kg
+Requested = 50 kg
+
+Return:
+
+409 CONFLICT
+INSUFFICIENT_INVENTORY
+
+The API design and database transaction design therefore work together.
+
+8.6.24 Kotlin frontend communication
+
+Your Kotlin frontend should conceptually have:
+
+UI
+ ↓
+ViewModel
+ ↓
+Repository
+ ↓
+HTTP Client
+ ↓
+Spring Boot API
+
+For example:
+
+ReceiveMaterialScreen
+        ↓
+ReceiveMaterialViewModel
+        ↓
+PurchaseRepository
+        ↓
+POST /api/v1/purchases/{id}/receipts
+
+The frontend should display:
+
+Success
+
+or translate backend errors such as:
+
+INSUFFICIENT_INVENTORY
+ORDER_LOCKED
+PAYMENT_ALLOCATION_EXCEEDED
+
+It should not duplicate the business rules.
+
+8.6.25 The first SmartSilk vertical API slice
+
+Don't implement every API immediately.
+
+Build one complete business path:
+
+Authentication
+     ↓
+Create Supplier
+     ↓
+Create Purchase
+     ↓
+Receive Material
+     ↓
+View Inventory
+     ↓
+Create Customer
+     ↓
+Create Order
+     ↓
+Record Customer Payment
+     ↓
+View Customer Outstanding
+
+This gives you an end-to-end working system:
+
+Kotlin
+  ↓
+REST
+  ↓
+Spring Boot
+  ↓
+Application Service
+  ↓
+Domain
+  ↓
+JPA
+  ↓
+PostgreSQL
+
+That is far more valuable than creating 50 empty endpoints.
+
+8.6.26 Final SmartSilk API map
+
+Your MVP API should roughly look like this:
+
+/api/v1
+│
+├── /auth
+│   ├── POST /login
+│   └── POST /refresh
+│
+├── /parties
+│   ├── POST /
+│   ├── GET /
+│   ├── GET /{id}
+│   └── PATCH /{id}
+│
+├── /purchases
+│   ├── POST /
+│   ├── GET /
+│   ├── GET /{id}
+│   └── POST /{id}/receipts
+│
+├── /inventory
+│   ├── GET /summary
+│   ├── GET /movements
+│   └── GET /external-wip
+│
+├── /orders
+│   ├── POST /
+│   ├── GET /
+│   ├── GET /{id}
+│   └── PATCH /{id}
+│
+├── /production-batches
+│   ├── POST /
+│   ├── GET /{id}
+│   ├── POST /{id}/start
+│   └── POST /{id}/complete
+│
+├── /outsourcing-jobs
+│   ├── POST /
+│   ├── GET /{id}
+│   ├── POST /{id}/issue
+│   └── POST /{id}/receive
+│
+├── /work-records
+│   ├── POST /
+│   └── GET /
+│
+├── /payments
+│   ├── POST /
+│   └── GET /
+│
+├── /customers/{id}
+│   └── GET /outstanding
+│
+├── /suppliers/{id}
+│   └── GET /payables
+│
+├── /expenses
+│   ├── POST /
+│   └── GET /
+│
+├── /finance
+│   ├── GET /accounts
+│   ├── GET /transactions
+│   └── POST /transfers
+│
+└── /dashboard
+    └── GET /summary
+The most important principle to remember
+
+Don't design APIs around your database tables. Design them around business capabilities.
+
+Bad:
+
+POST /material-movements
+POST /financial-transactions
+POST /payment-allocations
+
+Good:
+
+POST /purchases/{id}/receipts
+POST /production-batches/{id}/complete
+POST /outsourcing-jobs/{id}/issue
+POST /payments
+
+The business operation creates the necessary ledger records internally.
+
+Your Step 8.6 task
+
+Before moving forward, create a simple API contract document with these 9 endpoints first:
+
+POST /api/v1/parties
+POST /api/v1/purchases
+POST /api/v1/purchases/{id}/receipts
+GET /api/v1/inventory/summary
+POST /api/v1/orders
+POST /api/v1/payments
+GET /api/v1/customers/{id}/outstanding
+POST /api/v1/production-batches
+POST /api/v1/production-batches/{id}/complete
+
+For each, define:
+
+Endpoint
+HTTP method
+Purpose
+Request JSON
+Response JSON
+Validation rules
+Possible errors
+Transaction required?

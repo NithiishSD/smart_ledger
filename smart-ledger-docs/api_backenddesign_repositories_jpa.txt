@@ -1,0 +1,1044 @@
+Step 8.5 — Repositories & JPA
+
+Now we reach the persistence layer: how Java/Spring Boot talks to PostgreSQL.
+
+Our architecture is currently:
+
+Kotlin Frontend
+      ↓
+REST Controller
+      ↓
+Application Service
+      ↓
+Domain Rules
+      ↓
+Repository
+      ↓
+JPA / Hibernate
+      ↓
+PostgreSQL
+
+The key idea:
+
+JPA is an implementation tool for persistence. Your business logic should not become dependent on JPA details.
+
+8.5.1 What Is JPA?
+
+JPA (Jakarta Persistence API) is a specification for mapping Java objects to relational database tables.
+
+Hibernate is the most common implementation used by Spring Boot.
+
+Conceptually:
+
+Java Object
+    ↓
+JPA/Hibernate
+    ↓
+SQL
+    ↓
+PostgreSQL
+
+For example:
+
+Java Purchase object
+        ↓
+purchases table
+8.5.2 Object-Relational Mapping
+
+This is called ORM — Object-Relational Mapping.
+
+Suppose the database has:
+
+purchases
+-------------------------
+id
+purchase_number
+supplier_id
+purchase_date
+ordered_weight_kg
+rate_per_kg
+status
+
+JPA can map that to a Java persistence model.
+
+Conceptually:
+
+Purchase
+ ├── id
+ ├── purchaseNumber
+ ├── supplier
+ ├── purchaseDate
+ ├── orderedWeight
+ ├── rate
+ └── status
+
+Hibernate translates operations into SQL.
+
+8.5.3 Why Use JPA?
+
+Without ORM, you'd manually write SQL for everything:
+
+SELECT ...
+INSERT ...
+UPDATE ...
+
+JPA gives you:
+
+entity mapping
+relationship mapping
+transactions
+persistence context
+dirty checking
+query abstraction
+pagination
+locking
+
+But don't misunderstand this as:
+
+"JPA means I don't need to know SQL."
+
+You absolutely still need to understand SQL and PostgreSQL.
+
+8.5.4 JPA Entity
+
+A persistence entity generally corresponds to a database table.
+
+For example:
+
+Purchase
+   ↕
+purchases
+
+The primary key:
+
+Purchase.id
+   ↕
+purchases.id
+8.5.5 Entity Relationships
+
+SmartSilk has many relationships.
+
+For example:
+
+Supplier
+   │
+   │ 1:N
+   ▼
+Purchase
+
+And:
+
+Purchase
+   │
+   │ 1:N
+   ▼
+MaterialReceipt
+
+And:
+
+CustomerOrder
+   │
+   │ 1:N
+   ▼
+OrderItem
+
+JPA needs to understand these relationships.
+
+8.5.6 @ManyToOne
+
+Consider:
+
+Many Purchases
+       │
+       ▼
+ One Supplier
+
+So:
+
+Purchase → Supplier
+
+is a ManyToOne.
+
+The database has:
+
+purchases.supplier_id
+        ↓
+parties.id
+8.5.7 @OneToMany
+
+From the supplier/purchase perspective:
+
+Supplier
+   │
+   └── purchases
+          ├── Purchase 1
+          ├── Purchase 2
+          └── Purchase 3
+
+That's OneToMany.
+
+But there's an important practical point:
+
+Don't automatically make every relationship bidirectional.
+
+You should only model relationships that the application actually needs.
+
+8.5.8 Why Bidirectional Relationships Can Become Messy
+
+Imagine:
+
+Supplier
+ └── purchases
+      └── supplier
+           └── purchases
+                └── ...
+
+This can cause problems with:
+
+JSON serialization
+accidental loading
+large object graphs
+confusing entity state
+
+For SmartSilk, prefer simple, intentional relationships.
+
+Often:
+
+Purchase
+   → Supplier
+
+is enough.
+
+When you need all purchases:
+
+PurchaseRepository.findBySupplier(...)
+8.5.9 Lazy vs Eager Loading
+
+This is a very important JPA interview topic.
+
+Suppose:
+
+Purchase
+   └── Supplier
+
+Should Hibernate immediately load the supplier?
+
+Eager
+
+Load relationship immediately.
+
+Purchase
+   +
+Supplier
+Lazy
+
+Load it only when needed.
+
+Purchase
+   ↓
+Supplier loaded later
+
+For most collection relationships, lazy loading is generally safer.
+
+Don't blindly use EAGER.
+
+8.5.10 Why Eager Loading Can Hurt
+
+Suppose you request:
+
+GET /purchases
+
+There are:
+
+1,000 purchases
+
+Each purchase has supplier/customer/receipts/etc.
+
+If everything is eager:
+
+Purchase
+ ├── Supplier
+ ├── Receipts
+ ├── ...
+
+Hibernate may load far more data than required.
+
+Performance suffers.
+
+8.5.11 Lazy Loading Isn't a Magic Solution
+
+Lazy loading has its own problem:
+
+N+1 queries
+
+This is one of the most important JPA performance problems.
+
+8.5.12 The N+1 Problem
+
+Suppose you request:
+
+100 purchases
+
+Hibernate first executes:
+
+SELECT * FROM purchases;
+
+Then while processing each purchase:
+
+SELECT * FROM parties WHERE id = ?;
+
+100 times.
+
+Total:
+
+1 + 100 = 101 queries
+
+That's the N+1 query problem.
+
+8.5.13 How Do We Fix N+1?
+
+Use appropriate query strategies.
+
+For example:
+
+fetch joins
+entity graphs
+DTO projections
+carefully designed repository queries
+
+Don't just change everything to EAGER.
+
+8.5.14 Fetch Join
+
+Conceptually:
+
+SELECT p, s
+FROM Purchase p
+JOIN FETCH p.supplier s
+
+This can load the purchase and supplier together.
+
+Instead of:
+
+1 query for purchases
++
+100 supplier queries
+
+you can often get the needed data in one query.
+
+8.5.15 But Don't Fetch Everything
+
+Another beginner mistake:
+
+JOIN FETCH
+JOIN FETCH
+JOIN FETCH
+JOIN FETCH
+
+for every relationship.
+
+This can produce huge result sets.
+
+For example:
+
+Purchase
+ × Receipts
+ × Documents
+ × Payments
+ × ...
+
+can explode the number of rows.
+
+The rule is:
+
+Fetch what the specific use case needs, not everything related to the entity.
+
+8.5.16 Repository
+
+A repository provides persistence operations.
+
+Conceptually:
+
+PurchaseRepository
+
+might support:
+
+findById()
+findByPurchaseNumber()
+findBySupplier()
+findByStatus()
+save()
+
+The application service uses this repository.
+
+8.5.17 Don't Put Business Logic in Repositories
+
+Bad:
+
+PurchaseRepository
+    └── calculateSupplierProfitAndDeterminePaymentEligibility()
+
+Repositories should focus on:
+
+Getting and persisting data.
+
+Business workflows belong in application/domain services.
+
+8.5.18 Query Methods
+
+Spring Data can derive simple queries from method names.
+
+Conceptually:
+
+findBySupplierId(...)
+findByStatus(...)
+findBySupplierIdAndStatus(...)
+
+This is convenient for simple queries.
+
+But don't make giant method names.
+
+For example:
+
+findBySupplierIdAndStatusAndPurchaseDateBetweenAnd...
+
+Eventually it becomes unreadable.
+
+Use explicit queries or specifications when complexity increases.
+
+8.5.19 JPQL vs Native SQL
+
+You have two common approaches.
+
+JPQL
+
+Queries entity concepts.
+
+Purchase
+Supplier
+Order
+
+rather than directly referencing table names.
+
+Useful for portable application queries.
+
+Native SQL
+
+Write actual PostgreSQL SQL.
+
+Useful when you need:
+
+PostgreSQL-specific features
+complex reporting
+performance-critical queries
+window functions
+specialized aggregation
+
+SmartSilk can use both.
+
+8.5.20 Don't Force Everything Through JPA
+
+This is an important production lesson.
+
+For normal CRUD:
+
+JPA
+
+is excellent.
+
+For complex reporting:
+
+PostgreSQL SQL
+
+may be much better.
+
+For example:
+
+Monthly production yield
+Manufacturer comparison
+Customer outstanding
+Inventory aggregation
+
+may require optimized SQL.
+
+You don't need to prove that "everything is JPA".
+
+8.5.21 SmartSilk Reporting Strategy
+
+A sensible approach:
+
+Transactional operations
+        ↓
+JPA + repositories
+
+Complex reports
+        ↓
+Optimized SQL / projections
+
+Dashboard
+        ↓
+Dedicated reporting queries
+
+This is more realistic than forcing all queries through entity graphs.
+
+8.5.22 Persistence Context
+
+Hibernate maintains a persistence context.
+
+Think of it as a managed set of entities during a transaction.
+
+Example:
+
+Transaction
+     │
+     ▼
+Persistence Context
+     │
+     ├── Purchase A
+     ├── Supplier B
+     └── Receipt C
+
+Hibernate tracks changes.
+
+8.5.23 Dirty Checking
+
+Suppose a managed entity changes:
+
+purchase.status
+
+You don't necessarily have to explicitly issue an UPDATE yourself.
+
+Hibernate detects the change when the transaction is flushed.
+
+Conceptually:
+
+Load Purchase
+     ↓
+Modify status
+     ↓
+Hibernate detects change
+     ↓
+UPDATE purchases ...
+
+This is called dirty checking.
+
+8.5.24 Why This Matters
+
+It means your service can work with objects rather than manually writing an update query for every simple state change.
+
+But don't abuse this.
+
+For bulk updates, explicit queries can be much more efficient.
+
+8.5.25 Cascade Operations
+
+Suppose:
+
+CustomerOrder
+   └── OrderItems
+
+Should saving the order automatically save all items?
+
+Potentially yes.
+
+This is where cascade settings matter.
+
+Common cascade operations include:
+
+PERSIST
+MERGE
+REMOVE
+ALL
+
+But:
+
+Don't blindly use CascadeType.ALL.
+
+8.5.26 Why Cascading Can Be Dangerous
+
+Imagine:
+
+Order
+  └── Customer
+
+If you configure cascading delete carelessly:
+
+delete Order
+     ↓
+delete Customer
+
+That would be catastrophic.
+
+Customer is shared across many orders.
+
+So cascade behavior should reflect actual ownership.
+
+8.5.27 Aggregate Ownership
+
+This connects to our domain model.
+
+For:
+
+CustomerOrder
+ └── OrderItems
+
+the order owns its items conceptually.
+
+Therefore cascade may make sense.
+
+But:
+
+Purchase
+ └── Supplier
+
+doesn't mean the purchase owns the supplier.
+
+Supplier is independent.
+
+So cascading delete from purchase → supplier would be wrong.
+
+8.5.28 Orphan Removal
+
+orphanRemoval means a child removed from its parent relationship can be deleted.
+
+This is appropriate only when the child has no independent lifecycle.
+
+For example:
+
+Order
+ └── OrderItem
+
+Potentially:
+
+remove OrderItem from Order
+→ delete OrderItem
+
+But don't use orphan removal for:
+
+Payment
+Customer
+Supplier
+FinancialTransaction
+
+because these have independent business meaning/history.
+
+8.5.29 UUIDs
+
+Our database design uses UUIDs.
+
+Why?
+
+Because they:
+
+avoid predictable sequential IDs
+work well across distributed systems later
+reduce collisions when generating IDs
+avoid exposing simple database row counts
+
+Example:
+
+550e8400-e29b-41d4-a716-446655440000
+
+But human users shouldn't have to type UUIDs.
+
+Therefore:
+
+Internal:
+UUID
+
+User-facing:
+PUR-2026-0012
+ORD-2026-0034
+PAY-2026-0015
+8.5.30 Human Business IDs
+
+This is important for SmartSilk.
+
+Father should be able to say:
+
+"Show me purchase PUR-2026-0012."
+
+Not:
+
+"Find UUID 550e8400...."
+
+So keep both:
+
+id = UUID
+purchase_number = PUR-2026-0012
+
+The business number should have a unique database constraint.
+
+8.5.31 @Version — Optimistic Locking
+
+We discussed this in Step 7.5.
+
+For entities where concurrent editing is possible, we can have:
+
+version
+
+Hibernate can use it to detect conflicting updates.
+
+Example:
+
+User A reads order
+version = 3
+
+User B reads order
+version = 3
+
+A saves:
+
+version → 4
+
+B tries saving with version 3.
+
+Hibernate detects:
+
+Conflict!
+
+and throws an optimistic locking exception.
+
+8.5.32 Where Should SmartSilk Use Optimistic Locking?
+
+Useful candidates:
+
+CustomerOrder
+Purchase
+OutsourcingJob
+ProductionBatch
+
+especially when multiple staff could edit them.
+
+But don't blindly put @Version everywhere.
+
+For highly critical stock operations, explicit database locking is more appropriate.
+
+8.5.33 Pessimistic Locking
+
+For inventory-critical operations:
+
+SELECT ... FOR UPDATE
+
+conceptually locks the row.
+
+Spring Data JPA supports lock modes.
+
+The application service can then safely perform:
+
+lock
+ ↓
+check stock
+ ↓
+modify
+ ↓
+commit
+
+This directly implements the concurrency strategy we designed earlier.
+
+8.5.34 SmartSilk Locking Strategy
+
+I recommend:
+
+Inventory balance
+
+Pessimistic locking
+
+Because concurrent stock consumption must be serialized.
+
+Financial account operations
+
+Use transactional locking where necessary, particularly transfers and balance-sensitive operations.
+
+Orders/purchases
+
+Optimistic locking
+
+because simultaneous edits are possible but usually less frequent.
+
+Master data
+
+Normal optimistic/conventional updates are sufficient.
+
+8.5.35 The N+1 Problem in SmartSilk
+
+Consider dashboard:
+
+100 customers
+    ↓
+for each customer:
+    query outstanding
+
+Potentially:
+
+1 + 100 queries
+
+Don't design reports like this.
+
+Instead ask PostgreSQL to perform aggregation:
+
+GROUP BY customer
+
+and return the result in one optimized query.
+
+This is why understanding SQL remains important even when using JPA.
+
+8.5.36 DTO Projections for Reports
+
+Suppose dashboard only needs:
+
+customer_name
+outstanding_amount
+
+There is no reason to load:
+
+Customer entity
++
+all orders
++
+all payments
++
+all documents
+
+Instead query exactly the required data.
+
+Conceptually:
+
+CustomerOutstandingDTO
+
+This can dramatically reduce memory and query overhead.
+
+8.5.37 Pagination
+
+Never do this for potentially large tables:
+
+GET /purchases
+
+and return 100,000 rows.
+
+Use:
+
+?page=0
+&size=20
+
+Response conceptually:
+
+{
+  "content": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 143,
+  "totalPages": 8
+}
+
+Pagination is especially useful for:
+
+purchases
+orders
+payments
+inventory movements
+notifications
+documents
+8.5.38 Filtering
+
+Business users will need queries such as:
+
+Show supplier purchases from last month.
+
+or:
+
+Show pending orders for this customer.
+
+Instead of creating dozens of endpoints, use filtering parameters where appropriate.
+
+For example:
+
+/purchases?supplierId=...&status=PARTIALLY_RECEIVED
+
+For complex dynamic filtering, Spring Data Specifications or QueryDSL-like approaches can help.
+
+For MVP, don't over-engineer this.
+
+8.5.39 Repository Design Principle
+
+Keep repositories focused.
+
+Example conceptual separation:
+
+PurchaseRepository
+MaterialReceiptRepository
+MaterialMovementRepository
+PaymentRepository
+FinancialTransactionRepository
+
+Don't create:
+
+EverythingRepository
+
+And don't create repositories that exist only to wrap one trivial method unless needed.
+
+8.5.40 Repository → Database Boundary
+
+Think of the repository as:
+
+The place where the application crosses from business logic into persistence.
+
+Above it:
+
+Business concepts
+
+Below it:
+
+SQL/JPA/PostgreSQL
+
+This separation will make testing much easier.
+
+8.5.41 A Practical SmartSilk Example
+
+Suppose we execute:
+
+CompleteProduction
+
+The application service does:
+
+1. Load production batch
+2. Load/lock inventory balance
+3. Validate quantity
+4. Record material movement
+5. Record output movement
+6. Update production status
+7. Commit
+
+Repositories perform persistence:
+
+ProductionBatchRepository
+InventoryBalanceRepository
+MaterialMovementRepository
+
+The service doesn't know:
+
+SELECT ...
+
+Hibernate/PostgreSQL handles that layer.
+
+8.5.42 One Important Warning: JPA Entity ≠ API Model
+
+Do not do:
+
+Database Entity
+      ↓
+JSON directly
+
+Prefer:
+
+Database Entity
+      ↓
+Mapper
+      ↓
+Response DTO
+      ↓
+JSON
+
+This prevents your persistence model from accidentally becoming your public API contract.
+
+8.5.43 One Important Warning: Don't Hide SQL Knowledge
+
+As a cloud/backend engineer, you should understand:
+
+JPA
+Hibernate
+SQL
+PostgreSQL
+Indexes
+Transactions
+Locks
+Execution plans
+
+not just:
+
+@Repository
+
+Interviewers may ask:
+
+"Why is this query slow?"
+
+and @Repository isn't an answer.
+
+8.5.44 SmartSilk JPA Decision Matrix
+Requirement	Recommended approach
+Simple CRUD	Spring Data JPA
+Simple lookup	Derived query
+Complex entity query	JPQL
+Complex report	SQL/projection
+Large list	Pagination
+Dashboard	DTO projection
+Concurrent stock	Pessimistic lock
+Editable aggregate	Optimistic @Version
+Child owned by parent	Cascade where appropriate
+Shared entity	No cascade delete
+Financial history	Avoid hard delete
+Inventory history	Movement ledger
+API output	DTO
+Business workflow	Application Service
+8.5.45 The Architecture We Have Now
+                     HTTP
+                      │
+                      ▼
+               ┌──────────────┐
+               │  Controller  │
+               └──────┬───────┘
+                      │ DTO
+                      ▼
+             ┌──────────────────┐
+             │ Application       │
+             │ Service           │
+             └────────┬─────────┘
+                      │
+              Business Rules
+                      │
+                      ▼
+             ┌──────────────────┐
+             │   Repository     │
+             └────────┬─────────┘
+                      │
+                 JPA/Hibernate
+                      │
+              ┌───────┴────────┐
+              ▼                ▼
+         PostgreSQL       DB Constraints
+
+And for concurrency:
+
+Application Service
+       │
+       ▼
+@Transactional
+       │
+       ├── Lock critical row
+       ├── Validate
+       ├── Modify
+       ├── Record ledger
+       └── Commit
+Step 8.5 Complete
+
+You should now understand:
+
+JPA vs Hibernate
+ORM
+entity relationships
+ManyToOne / OneToMany
+lazy vs eager loading
+N+1 queries
+fetch joins
+repositories
+JPQL vs SQL
+persistence context
+dirty checking
+cascade/orphan removal
+UUIDs
+optimistic locking
+pessimistic locking
+DTO projections
+pagination
+filtering
+why SQL knowledge still matters
