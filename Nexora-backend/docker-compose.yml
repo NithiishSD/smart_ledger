@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres-nexora
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=nexora_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=nexora_dev
+    ports:
+      - "5431:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      
+volumes:
+  postgres_data:
