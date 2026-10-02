@@ -1,10 +1,10 @@
-package com.Nexora.Nexora_backend;
+package com.nexora;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class NexoraBackendApplicationTests {
+class NexoraApplicationTests {
 
     @Test
     void contextLoads() {
