@@ -60,7 +60,6 @@ Kotlin Android (Jetpack Compose), not started yet.
 
 ## Architecture in one screen (details: docs/DECISIONS.md)
 - **Modular monolith**, package-by-module: `com.nexora.<module>.{api, application, domain, infrastructure}` + `shared`.
-  (The package is still `com.Nexora.Nexora_backend` until ROADMAP task 0.1 renames it. Check before creating files.)
 - Controller (HTTP + DTO validation) → Application service (**use case, `@Transactional`**, orchestration, locks)
   → Domain (rich entities with invariant-guarding methods, no setters) → Repository → PostgreSQL (constraints = last defence).
 - Modules talk only through each other's **application services**, never another module's repositories. Cross-module references are by UUID.
@@ -102,6 +101,6 @@ The default mode is **mentor + pair-programmer**:
 - Git: branch `feature/<area>-<short>` from `main`, Conventional Commits, PR to `main`.
 
 ## Current state (update as the project moves)
-- Done: Gradle/Spring Boot 4.1.1 skeleton, Actuator/JPA/Flyway/Validation/WebMVC deps, local Postgres compose, Flyway V1/V2 (a smoke test only).
+- Done: Gradle/Spring Boot 4.1.1 skeleton, Actuator/JPA/Flyway/Validation/WebMVC deps, local Postgres compose, Flyway V1/V2 (a smoke test only), task 0.1 base package renamed to `com.nexora` (main class `NexoraApplication`).
 - In progress: `V3__initial_foundation_tables.sql` (untracked). It has users, parties (multi-role via `party_roles`), and phone numbers. It **needs revision** before merge: see ROADMAP task 1.9.
 - Branch: `feature/dev-a/backend-foundation`. Current phase: see the top of `docs/ROADMAP.md`.

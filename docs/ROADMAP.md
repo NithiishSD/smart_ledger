@@ -3,7 +3,7 @@
 > Covers SDLC **Step 9 Implementation → Step 10 Integration → Step 11 Testing/Security/Reliability → Step 12 Deployment/Monitoring/Docs**.
 > Steps 1–8 (business → API design) are complete in `smart-ledger-docs/`.
 >
-> **Current phase: Phase 0 — Foundation** · Last updated: 2026-09-29
+> **Current phase: Phase 0 — Foundation** (next task: 0.2 `application.yml` + profiles) · Last updated: 2026-10-02
 >
 > How to use: work top to bottom and tick `[x]` as you finish tasks. Run `/next-task` to get the next task explained. Run `/task-done` to verify and tick it.
 
@@ -32,7 +32,7 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 **Goal:** A clean skeleton where every future feature has a place and a pattern.
 **Why first:** Retrofitting error handling, auth or test infrastructure into 10 modules is painful.
 
-- [ ] 0.1 Rename base package `com.Nexora.Nexora_backend` → `com.nexora` and the main class → `NexoraApplication` (Java packages are lowercase; this is cheap now and costly later)
+- [x] 0.1 Rename base package `com.Nexora.Nexora_backend` → `com.nexora` and the main class → `NexoraApplication` (Java packages are lowercase; this is cheap now and costly later)
 - [ ] 0.2 Convert config to `application.yml` + profiles `dev` / `test` / `prod`. DB creds and JWT secret come from env vars with dev defaults. Set `hibernate.jdbc.time_zone=UTC`
 - [ ] 0.3 Move `docker-compose.yml` to the repo root (or keep it, but document it). Add a `.env.example`
 - [ ] 0.4 `shared/`: `AuditableEntity` (UUID id, createdAt, updatedAt, createdBy, version) + JPA auditing + `AuditorAware`
