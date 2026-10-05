@@ -33,7 +33,7 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 **Why first:** Retrofitting error handling, auth or test infrastructure into 10 modules is painful.
 
 - [x] 0.1 Rename base package `com.Nexora.Nexora_backend` → `com.nexora` and the main class → `NexoraApplication` (Java packages are lowercase; this is cheap now and costly later)
-- [ ] 0.2 Convert config to `application.yml` + profiles `dev` / `test` / `prod`. DB creds and JWT secret come from env vars with dev defaults. Set `hibernate.jdbc.time_zone=UTC`
+- [x] 0.2 Convert config to `application.yml` + profiles `dev` / `test` / `prod`. DB creds and JWT secret come from env vars with dev defaults. Set `hibernate.jdbc.time_zone=UTC`
 - [ ] 0.3 Move `docker-compose.yml` to the repo root (or keep it, but document it). Add a `.env.example`
 - [ ] 0.4 `shared/`: `AuditableEntity` (UUID id, createdAt, updatedAt, createdBy, version) + JPA auditing + `AuditorAware`
 - [ ] 0.5 `shared/`: `ErrorCode` enum, `BusinessException` hierarchy, `GlobalExceptionHandler` (ProblemDetail + `code`) — see CONVENTIONS §7
