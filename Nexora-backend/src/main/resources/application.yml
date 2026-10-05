@@ -1,0 +1,38 @@
+# Common settings loaded in every environment.
+spring:
+  profiles:
+    default: dev
+  application:
+    # Identifies this Spring Boot application in logs and monitoring tools.
+    name: nexora-backend
+  datasource:
+    # Use DB_URL when supplied; otherwise connect to the local PostgreSQL container.
+    url: ${DB_URL:jdbc:postgresql://localhost:5431/nexora_db}
+    # Environment variables override these local-development defaults.
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:nexora_dev}
+  jpa:
+    hibernate:
+      # Flyway owns schema changes; Hibernate only verifies the schema at startup.
+      ddl-auto: validate
+    # Prevent database access from continuing into the controller/view layer.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # Store and read database timestamps consistently in UTC.
+          time_zone: UTC
+  flyway:
+    # Apply pending versioned migrations from db/migration at startup.
+    enabled: true
+
+server:
+  # Use SERVER_PORT when supplied; otherwise expose the API on port 8080.
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Expose only the actuator endpoints needed for basic monitoring.
+        include: health,info

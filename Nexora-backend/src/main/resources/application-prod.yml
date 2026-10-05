@@ -1,0 +1,17 @@
+spring:
+  config:
+    # Load this file only when the production profile is active.
+    activate:
+      on-profile: prod
+  datasource:
+    # Production must provide the database URL; there is intentionally no default.
+    url: ${DB_URL}
+    # Missing credentials should fail startup instead of using development values.
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+logging:
+  level:
+    # Normal operational logging for production.
+    root: INFO
+    com.nexora: INFO

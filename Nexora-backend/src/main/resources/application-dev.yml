@@ -1,0 +1,18 @@
+spring:
+  config:
+    # Load this file only when the dev profile is explicitly active.
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    # Give application code detailed logs while developing locally.
+    com.nexora: DEBUG
+    # Keep Spring MVC logs at a normal informational level.
+    org.springframework.web: INFO
+
+management:
+  endpoint:
+    health:
+      # Useful for local diagnosis; avoid exposing details in production.
+      show-details: always

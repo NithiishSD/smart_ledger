@@ -1,0 +1,19 @@
+spring:
+  config:
+    # Load this file only when the test profile is active.
+    activate:
+      on-profile: test
+  datasource:
+    # Test-specific variables prevent test configuration from changing DB_URL.
+    # The fallback is temporary; integration tests should later use Testcontainers.
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5431/nexora_db}
+    username: ${TEST_DB_USERNAME:postgres}
+    password: ${TEST_DB_PASSWORD:nexora_dev}
+  jpa:
+    # Keep test output focused by hiding generated SQL statements.
+    show-sql: false
+
+logging:
+  level:
+    # Show warnings and errors while keeping routine test logs quiet.
+    root: WARN
