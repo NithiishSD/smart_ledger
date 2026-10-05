@@ -19,7 +19,7 @@ public abstract class AuditableEntity {
     @Column(name="created_at",nullable=false,updatable=false)
     private Instant createdAt;
 
-    @LastModifiedBy
+    @LastModifiedDate
     @Column(name="updated_at",nullable=false)
     private Instant updatedAt;
 
