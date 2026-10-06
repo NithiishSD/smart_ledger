@@ -294,3 +294,50 @@ Lesson: when two wildcard imports clash, import the one you need explicitly or u
 ### Interview lines
 - "Business rule violations are unchecked exceptions so Spring rolls the transaction back; one `@RestControllerAdvice` maps them to RFC 9457 problem responses with a stable error code."
 - "We never leak exception messages to clients; we log them and return a generic 500."
+
+---
+
+## Part 6 — Task 0.6: Clock, PageResponse, Money/Weight
+
+- **Inject a `Clock`, don't call `Instant.now()`:** one time source and zone for the whole app; tests swap in `Clock.fixed(...)`. DB timestamps stay UTC; the Indian zone is only for business dates.
+- **`java.time.Clock` vs `io.micrometer...Clock`:** same simple name, different packages. Check the import when the IDE offers several.
+- **`BigDecimal.equals` compares scale** (`2.0` ≠ `2.00`); use `compareTo` for numbers. Build values from Strings, never from doubles.
+- **Scale and rounding:** money scale 2, weight scale 3, `HALF_UP` (a tie goes up). Whole-rupee billing is still an open owner question (Q5).
+- **`record`:** immutable data class with generated constructor, accessors, equals, hashCode, toString. `PageResponse<T>` is generic so one type serves every list endpoint.
+- **Utility class pattern:** `final` class + private constructor + static methods (`Money`, `Weight`).
+- **Constructor injection pays off in tests:** `new GlobalExceptionHandler(Clock.fixed(...))` needs no Spring context.
+
+Review answers (model answers, since these were skipped):
+1. A `Clock` makes time controllable in tests and consistent across the app.
+2. `equals` also compares scale; use `compareTo`.
+3. A record gives an immutable data carrier with no boilerplate; ideal for DTOs.
+4. `final` + private constructor stops anyone extending or instantiating a class that only has static methods.
+5. Bill rounding (whole rupees or paise) is a business decision for the owner (Q5), not a technical one.
+
+---
+
+## Part 7 — Task 0.7: BusinessNumberGenerator (`PUR-2026-0001`)
+
+### The problem
+Two requests creating a purchase at the same moment must never receive the same number, and a failed request must not leave a gap (ADR-007).
+Rejected options: `MAX()+1` (race condition), native Postgres sequences (gaps on rollback, no yearly reset).
+
+### The design
+1. Table `business_number_sequences(prefix, seq_year, next_value)`, one row per prefix and year (migration `V4`).
+2. `INSERT ... ON CONFLICT DO NOTHING` creates the row for a new year if it does not exist (safe when two requests race).
+3. `SELECT ... FOR UPDATE` (`@Lock(PESSIMISTIC_WRITE)`) locks that row. Others wait.
+4. Take `next_value`, add 1, return `PREFIX-YEAR-0000` formatted. The new value is written at commit.
+5. The lock is released when the caller's transaction ends, so a rollback also undoes the increment: **gap-free**.
+
+### New concepts
+- **Pessimistic lock:** `FOR UPDATE` blocks other transactions that want the same row until commit/rollback.
+- **`@Transactional(propagation = MANDATORY)`:** the method must run inside an existing transaction, otherwise Spring throws. Needed here because the lock only lives as long as the transaction.
+- **`@Modifying` + `nativeQuery`:** a data-changing query written in plain SQL (`ON CONFLICT` is PostgreSQL syntax, not JPQL).
+- **Package-private repository:** only `BusinessNumberGenerator` in the same package can use it; other modules go through the service.
+- **Testcontainers:** a real PostgreSQL in a throwaway Docker container; `@DynamicPropertySource` points `spring.datasource.*` at it; the "singleton container" pattern shares one container across test classes.
+- **`CountDownLatch`:** a starting gun so all threads begin at the same instant, which makes the race real.
+- **Mutation check:** disabling `@Lock` made the concurrency test fail (with `ObjectOptimisticLockingFailureException`, because `@Version` acted as a safety net). A test that cannot fail proves nothing.
+
+### Interview lines
+- "Business numbers come from a counter row locked with `SELECT FOR UPDATE` inside the use-case transaction, so they are unique under concurrency and gap-free on rollback. A Postgres sequence would leave gaps."
+- "Optimistic locking detects the conflict after the fact; here contention is high and correctness critical, so I lock pessimistically."

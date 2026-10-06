@@ -37,7 +37,7 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 - [x] 0.3 Move `docker-compose.yml` to the repo root (or keep it, but document it). Add a `.env.example`
 - [x] 0.4 `shared/`: `AuditableEntity` (UUID id, createdAt, updatedAt, createdBy, version) + JPA auditing + `AuditorAware`
 - [x] 0.5 `shared/`: `ErrorCode` enum, `BusinessException` hierarchy, `GlobalExceptionHandler` (ProblemDetail + `code`) — see CONVENTIONS §7
-- [ ] 0.6 `shared/`: `PageResponse<T>`, `Clock` bean (Asia/Kolkata), money/weight helpers (scale + HALF_UP)
+- [x] 0.6 `shared/`: `PageResponse<T>`, `Clock` bean (Asia/Kolkata), money/weight helpers (scale + HALF_UP)
 - [ ] 0.7 `shared/numbering`: `business_number_sequences` migration + `BusinessNumberGenerator.next("PUR")` → `PUR-2026-0001` (row lock, per-year reset) + concurrency test
 - [ ] 0.8 springdoc-openapi, Swagger UI in dev only
 - [ ] 0.9 Test infrastructure: Testcontainers Postgres, `AbstractIntegrationTest`, and the context-load test running against the container
