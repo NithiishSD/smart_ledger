@@ -263,3 +263,34 @@ Lesson: when two wildcard imports clash, import the one you need explicitly or u
 ### Style notes
 - Put a comment on its own line, not after `package ...;`.
 - Keep indentation consistent (the last two getters were not indented).
+
+---
+
+## Part 5 — Task 0.5: error handling (ErrorCode, BusinessException, GlobalExceptionHandler)
+
+### Concepts
+- **Exception:** an object signalling a failure. `throw` jumps out of the current method and up the call stack until something catches it.
+- **Checked vs unchecked:** checked exceptions (`extends Exception`) must be caught or declared; unchecked (`extends RuntimeException`) need not. Spring's `@Transactional` rolls back on **unchecked** exceptions (and Errors) by default, not on checked ones.
+- **Enum with data:** `ErrorCode.INSUFFICIENT_INVENTORY(HttpStatus.CONFLICT)`. The constant carries its HTTP status, so code and status can never drift apart. An enum constructor is implicitly private.
+- **`@RestControllerAdvice`:** one class holding `@ExceptionHandler` methods for all controllers. Spring picks the **most specific** handler for the exception thrown.
+- **`ProblemDetail` (RFC 9457):** Spring's standard error body (`type, title, status, detail, instance`) plus our own properties (`code`, `timestamp`). Content type `application/problem+json`.
+- **`ResponseEntityExceptionHandler`:** Spring's base class that already maps ~15 MVC exceptions (404, 405, bad JSON, ...) to ProblemDetail. Without extending it, a catch-all `Exception.class` handler turns those into 500s.
+- **409 vs 422:** 409 = conflicts with the *current state*, might succeed later (stock arrives). 422 = well-formed but never valid as asked (vuda warp into production).
+- **DRY:** the three handlers share one `build(ErrorCode, detail, request)` helper.
+
+### Lessons from the bugs found
+1. A stale `bootRun` still holding port 8080 made new code look broken. If a change seems to have no effect: `ss -ltnp | grep 8080`.
+2. A misspelled enum constant (`CONCURRENT_MODIFICATON`) compiles fine but becomes a permanent API contract. Names that clients match on need extra care.
+3. Hard-coded strings that duplicate an enum drift silently. Use the enum.
+4. Known gap: Spring's own 404/405 bodies do not yet include `code` and `timestamp` (override `handleExceptionInternal` to add them).
+
+### Review answers (with corrections)
+1. **Why does `BusinessException` extend `RuntimeException`?** Spring rolls a transaction back only for unchecked exceptions by default. A business rule violation must undo the whole use case (Rule 4), so it is unchecked. Also, callers are not forced to write try/catch everywhere. ✔
+2. **What does `@RestControllerAdvice` do?** Handles exceptions for all controllers in one place, so controllers need no try/catch and every error has the same shape. ✔
+3. **409 or 422 for "stock would go negative"?** 409. The conflict depends on the *current state*; the same request could succeed after more stock is received. (422 is for requests that can never be valid.)
+4. **Why must the catch-all handler not return `ex.getMessage()`?** CORRECTION: the reason is **security**. Exception messages can contain SQL, table and column names, file paths or class names, which help an attacker. So the client gets a generic message, and the full exception is **logged server-side** with `log.error(..., ex)`. (Finding where the error happened is the job of the log, not the response.)
+5. **What does `code` give the Android app that the HTTP status does not?** The status is coarse: many different errors share 409. The `code` lets the app tell `INSUFFICIENT_INVENTORY` from `ORDER_LOCKED` and show a specific (even translated) message. The code is stable; the human message may be reworded.
+
+### Interview lines
+- "Business rule violations are unchecked exceptions so Spring rolls the transaction back; one `@RestControllerAdvice` maps them to RFC 9457 problem responses with a stable error code."
+- "We never leak exception messages to clients; we log them and return a generic 500."
