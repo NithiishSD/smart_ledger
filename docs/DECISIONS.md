@@ -4,7 +4,7 @@ Every significant choice in Nexora/SmartSilk, **why** it was made, what was reje
 what it costs us. Format: lightweight ADRs.
 
 - **Status:** `Accepted` (in force) · `Proposed` (recommended, decide when the phase starts) · `Superseded`
-- Adding or changing a decision? Append a new ADR and don't rewrite history. Use `/explain <topic>` to have the AI walk through any of them.
+- Adding or changing a decision? Append a new ADR and don't rewrite history.
 
 ---
 
@@ -19,7 +19,7 @@ what it costs us. Format: lightweight ADRs.
 **Why Java/Spring:** A mature ecosystem for transactional business systems (Spring Data JPA, Security, Validation, Flyway, Actuator), strong demand in the job market, and the developer's learning goal.
 **Why Java 21:** Current LTS. Records (DTOs), pattern matching, sealed types and virtual threads are available.
 **Why Boot 4.x:** Latest generation (Spring Framework 7, Jakarta EE 11, Hibernate 7, Spring Security 7, Jackson 3). Starting a new product on the previous major would mean an upgrade soon after launch.
-**Watch out:** Most tutorials and AI training data describe Boot 2/3. Differences that matter:
+**Watch out:** Most tutorials still describe Boot 2/3. Differences that matter:
 - Jackson 3: databind packages are `tools.jackson.*`. Annotations stay `com.fasterxml.jackson.annotation.*`.
 - Security: lambda DSL only. `WebSecurityConfigurerAdapter` is gone. Use a `SecurityFilterChain` bean.
 - Starters are modular (`spring-boot-starter-webmvc`, `spring-boot-starter-flyway`, and matching `-test` starters).
@@ -88,18 +88,18 @@ Isolation stays at PostgreSQL's default `READ COMMITTED` with explicit locks, no
 
 ## ADR-012 REST API conventions — Accepted
 `/api/v1/...` with resource nouns. Business actions are sub-resources (`POST /purchases/{id}/receipts`, `POST /production-batches/{id}/complete`). Lists are paginated (`page`, `size`, `sort`). Clients send intent, never derived numbers. Details: `CONVENTIONS.md §4`.
-**Rejected:** GraphQL and gRPC. The Android client is the only consumer and the operations are command-shaped.
+**Rejected:** GraphQL and gRPC. The desktop client is the only consumer and the operations are command-shaped.
 
 ## ADR-013 Error format: RFC 9457 `ProblemDetail` + stable `code` — Accepted
 The design doc specifies `{timestamp, status, code, message, path}`. We implement it with Spring's built-in `ProblemDetail` (standard fields `status`, `title`, `detail`, `instance`) plus the extension properties `code` and `timestamp`, and `errors[]` for field validation.
-**Why:** It follows a standard, Spring produces it natively, and it still carries everything the design asked for. The Android app switches on `code`.
+**Why:** It follows a standard, Spring produces it natively, and it still carries everything the design asked for. The desktop client switches on `code`.
 
 ## ADR-014 Authentication: Spring Security + JWT access token + opaque refresh token — Accepted (design), details Proposed
 - Access token: a **JWT signed with HS256** (secret from an env var), ~15 min lifetime, claims `sub`, `roles`, `permissions`, `iat`, `exp`. Issued with `NimbusJwtEncoder` and validated by `spring-boot-starter-oauth2-resource-server`. This is Spring's own JWT support, so no extra JWT library is needed.
 - Refresh token: a **random opaque string**. Only its **SHA-256 hash** is stored in `refresh_tokens` (with expiry and a revoked flag). It is **rotated** on every refresh, and logout revokes it.
 - Passwords: `BCryptPasswordEncoder` (via `DelegatingPasswordEncoder`).
 - Authorization is **permission-based** (`@PreAuthorize("hasAuthority('PAYMENT_CREATE')")`). Roles (`OWNER`, `STAFF`) are just permission bundles. The MVP seeds only `OWNER` (NFR 20.3).
-**Rejected:** Sessions/cookies (the mobile client is stateless), Keycloak/OAuth server (overkill), long-lived access tokens.
+**Rejected:** Sessions/cookies (the desktop client is stateless), Keycloak/OAuth server (overkill), long-lived access tokens.
 **Why the refresh token is not a JWT:** it has to be revocable, which requires a DB lookup anyway, so an opaque token is simpler and safer.
 
 ## ADR-015 Testing: JUnit 5 + AssertJ + Testcontainers PostgreSQL — Accepted
@@ -113,12 +113,12 @@ The design doc specifies `{timestamp, status, code, message, path}`. We implemen
 Schema changes happen **only** through `V<n>__<description>.sql`. `ddl-auto=validate`, so Hibernate never changes the schema.
 **Rule:** Once a migration is merged to `main` or has run anywhere shared, it is **immutable**. Fix forward with a new version. Before that, you may edit it and reset your local DB.
 
-## ADR-017 API documentation: springdoc-openapi — Proposed (Phase 0)
-Swagger UI at `/swagger-ui.html` in dev, disabled in prod. It is the contract for the Android client. Use the springdoc major version that supports Spring Boot 4 (3.x line). Verify on the springdoc releases page.
+## ADR-017 API documentation: springdoc-openapi — Accepted
+Swagger UI at `/swagger-ui.html` in dev, disabled in prod (`springdoc.*.enabled: false` by default, `true` only in `application-dev.yml`). It is the contract for the desktop client. springdoc-openapi 3.1.1 (the 3.x line supports Spring Boot 4).
 
 ## ADR-018 Idempotency keys — Accepted (design), implemented Phase 3
 An `idempotency_keys(key, user_id, request_hash, response_status, response_body, created_at)` table. A filter or aspect on annotated endpoints stores the result in the **same transaction** as the use case. A replay returns the stored response. Records expire after ~24–48h.
-**Why:** A payment retried on a flaky mobile network must not be recorded twice.
+**Why:** A payment retried on a flaky network connection must not be recorded twice.
 
 ## ADR-019 Side effects after commit — Accepted
 Notifications, WhatsApp and PDF generation are triggered by internal application events with `@TransactionalEventListener(phase = AFTER_COMMIT)`, backed by a `notifications` table that holds status and retries (a simple outbox). A WhatsApp outage never rolls back a payment.
@@ -133,17 +133,84 @@ For due-date reminders and similar jobs. It runs as a single instance. If we eve
 ## ADR-022 Observability — Proposed (Phase 7)
 Actuator (`health`, `info`, `metrics`, `prometheus`) is exposed on the management port and protected. Logs are JSON structured (`logging.structured.format.console`). Every request gets a correlation id (MDC) returned as `X-Request-Id`. Passwords, tokens and full account numbers are never logged.
 
-## ADR-023 Deployment target — Proposed (decide at Phase 8)
-**Recommendation:** A Docker image (multi-stage, or `./gradlew bootBuildImage`) and `docker compose` on a small VPS: app + PostgreSQL + **Caddy** (automatic HTTPS). CI/CD runs on **GitHub Actions** and pushes the image to GHCR. **Nightly `pg_dump` to off-site storage, with a tested restore.**
+## ADR-023 Deployment target — Accepted
+**Decision:** A Docker image (multi-stage, or `./gradlew bootBuildImage`) and `docker compose` on a small VPS: app + PostgreSQL + **Caddy** (automatic HTTPS). CI/CD runs on **GitHub Actions** and pushes the image to GHCR. **Nightly `pg_dump` to off-site storage, with a tested restore.**
 **Alternative:** A PaaS (Render/Railway/Fly) + managed Postgres. Less ops work, higher monthly cost, less learning.
 **Why not Kubernetes:** One app and one database, so it's not justified.
 **Non-negotiable for a real financial system:** automated backups, restore drills, HTTPS, secrets in env vars.
 
-## ADR-024 Android client: Kotlin + Jetpack Compose + MVVM — Proposed (Track B)
+## ADR-024 Android client: Kotlin + Jetpack Compose + MVVM — Superseded by ADR-035 (Android is future scope)
 Compose UI → ViewModel (StateFlow) → Repository → Retrofit/OkHttp (or Ktor) client. Hilt for DI. Tokens are kept in DataStore, encrypted with an Android Keystore key. An OkHttp `Authenticator` handles 401 → refresh → retry. Errors map by `code`.
 The client **never** re-implements business rules. It only displays what the backend computes.
 
+## ADR-025 Module-boundary test — Accepted (Phase 2)
+A `ModuleBoundaryTest` fails the build when a module uses another module's repositories or entities. It uses Spring Modulith `verify()` if a Boot 4.1-compatible release exists, otherwise an import-scanning JUnit test.
+**Why:** ADR-004 left enforcement "Proposed"; module boundaries must be machine-checked, not kept by discipline alone.
+
+## ADR-026 Stock adjustments never make stock negative — Accepted
+`ADJUSTMENT` movements need the `INVENTORY_ADJUST` permission and a mandatory reason, and cannot take any balance below zero (`CHECK (quantity_kg >= 0)` stays).
+**Why:** physical stock cannot be below zero. This replaces the earlier wording that an owner adjustment was the one exception to "stock never goes negative".
+
+## ADR-027 Payments lock the party row — Accepted (Phase 3)
+`recordPayment` takes `PESSIMISTIC_WRITE` on the paying/paid party row for the whole use case.
+**Why:** two concurrent payments from one customer must not over-allocate the same obligation.
+
+## ADR-028 Global lock order — Accepted
+Every use case that takes several locks acquires them in this order: idempotency key -> party -> aggregate -> inventory balances (ascending product type, location) -> financial accounts (ascending id) -> business number sequences.
+**Why:** one fixed order across all use cases prevents deadlocks.
+
+## ADR-029 Coverage gate — Accepted
+JaCoCo `jacocoTestCoverageVerification` fails `./gradlew build` when line coverage of the `application` and `domain` packages is below 80 %.
+**Why:** a measurable quality bar enforced by the build, not by memory.
+
+## ADR-030 Database session timeouts — Accepted (Phase 2)
+Every connection sets `lock_timeout = 5s` and `statement_timeout = 30s`. A lock timeout maps to 409 `CONCURRENT_MODIFICATION`.
+**Why:** bounded waits; clients retry instead of hanging behind a stuck transaction.
+
+## ADR-031 No overdraft — Accepted (assumption, confirm with owner)
+`FinanceService` rejects any money movement that would make a CASH **or** BANK account negative (`INSUFFICIENT_FUNDS`).
+**Why:** one simple, safe rule until the owner confirms whether any bank account has an overdraft facility (open question Q4).
+
+## ADR-032 Two database roles — Accepted (Phase 8)
+`nexora_owner` owns the schema and runs Flyway; `nexora_app` is the runtime user with DML only, and only `INSERT, SELECT` on ledger tables and `audit_log`.
+**Why:** makes "history is immutable" (rule 5) enforceable in the database, not only in code.
+
+## ADR-033 Idempotency on retry-sensitive POSTs — Accepted (Phase 3)
+`Idempotency-Key` is required on the seven POST endpoints listed in `03-ARCHITECTURE.md` section 7.2; records are kept 48 hours.
+**Why:** makes DOMAIN_RULES' "retry-sensitive POSTs" concrete.
+
+## ADR-034 Rate limiting — Accepted (Phase 7)
+An in-memory servlet filter limits `/api/v1/auth/**` to 10 requests per minute per IP and other API paths to 300 requests per minute per user. Exceeding a limit returns 429 `RATE_LIMITED` with `Retry-After`.
+**Why:** protects the login endpoint and the API without a new dependency or cache store.
+
 ---
+## ADR-035 Desktop client: Kotlin + Compose Multiplatform Desktop — Accepted
+**Context:** The owner works at a shop computer; a phone app is not needed for the first release.
+**Decision:** The client is a desktop application for **Windows 10/11 and Linux (Ubuntu 22.04+)**, written in Kotlin with
+Compose Multiplatform (Desktop/JVM): Compose UI -> ViewModel (StateFlow) -> Repository -> Ktor HTTP client with
+kotlinx.serialization; Koin for dependency injection. It talks to the central server over HTTPS (ADR-023). The access token
+lives in memory; the refresh token is kept in the operating system's credential store (Windows Credential Manager / Linux
+Secret Service). Installers: MSI and DEB built by the Compose Gradle plugin (jpackage, bundled JRE). No offline writes.
+**Why:** Same language and UI toolkit as the planned mobile app, so screens and view-models can be shared when Android is added;
+runs on the JVM like the backend; keyboard-first data entry suits daily ledger work.
+**Rejected:** JavaFX (nothing reusable for mobile later), a web UI in Electron/Tauri (adds TypeScript and a browser runtime),
+a local server on the shop PC (backups, updates and disk failure become manual; mobile access would need extra setup).
+**Cost:** Two installers to build and test (CI matrix: ubuntu-latest, windows-latest); updates are manual installer runs in the MVP.
+
+## ADR-036 Client is a desktop app laid out as Kotlin Multiplatform (Android later) — Accepted
+**Context:** The project has two developers (`TEAM_SPLIT.md`). Developer B owns the client and must keep it scalable to Android
+without a rewrite, while the first release ships on desktop only (ADR-035).
+**Decision:** `nexora-client/` is a Kotlin Multiplatform project with Compose Multiplatform and **only the desktop (JVM) target for
+now** (Windows MSI + Linux DEB). Source sets: `commonMain` (UI, view-models, repositories, API client, DTOs, formatting, validation)
+and `desktopMain` (window, OS credential store via java-keyring, desktop packaging). **No Android target is configured now**; Android is
+future scope and is added later as a new `androidMain` source set without moving the shared code.
+Platform services use `expect`/`actual` (for example `SecureTokenStore`, `AppSettingsStore`). Exact decimals use `java.math.BigDecimal`
+through an `expect`/`actual typealias` (both targets run on the JVM/ART), never `Double`.
+**Why:** The first release is desktop only (decided 2026-10-08), so no Android SDK or build time is spent now; keeping almost all code in `commonMain` means Android later is an added target, not a rewrite.
+**Rejected:** A plain JVM desktop module with code outside `commonMain` (Android later would need a rewrite); configuring the Android target now (not needed for the first release).
+**Cost:** Platform-specific code must stay behind `expect`/`actual` even with one target; a small discipline cost now.
+Supersedes the module-layout part of ADR-035; ADR-035's platform, server and security decisions still apply.
+
 ### Decisions deliberately NOT made yet (and why)
 - **Redis/caching** — no measured need. Add only when a query is proven slow.
 - **FIFO costing / raw material lots** — the business doesn't need lot traceability yet (design §4.11.4).

@@ -1,6 +1,6 @@
 # Coding Conventions & Reference Patterns
 
-How code in `Nexora-backend` is written. The AI assistant follows this file, and so should you.
+How code in `Nexora-backend` is written. Everyone working on the code follows this file.
 The snippets are **patterns taken from a neutral example domain (library books)**, so you learn the
 shape without being handed the SmartSilk solution.
 
@@ -231,7 +231,7 @@ interface BookRepository extends JpaRepository<Book, UUID> {
 1. Branch from `main`: `feature/<area>-<short>`.
 2. Small commits in Conventional Commits style. Never commit secrets, `build/` or `.gradle/`.
 3. Before a PR: `./gradlew build` is green, new migrations apply on a fresh DB, and the task's checklist is done.
-4. Open a PR to `main` and run `/review` (AI review) before merging. Squash-merge.
+4. Open a PR to `main` and get it reviewed before merging. Squash-merge.
 5. Tick the task in `docs/ROADMAP.md`.
 
 ## 11. Definition of Done (every task)

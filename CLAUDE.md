@@ -15,12 +15,21 @@ This is not a demo.
 The developer is building it **to learn production-grade backend engineering**. They follow the SDLC:
 Steps 1–8 (business analysis → API design) are done. We are now in **Step 9 Implementation**.
 
+**Two developers (`docs/TEAM_SPLIT.md`).** You are helping **Developer A** (backend core: infrastructure, `shared/*`,
+security, parties, procurement, inventory, production, finance, reporting, deployment). **Developer B** owns the desktop
+client (Kotlin + Compose Multiplatform, desktop target only) and the backend for customer orders, outsourcing, workforce
+and expenses (roadmap tasks tagged **[B]**, plan in `docs/ROADMAP_DEV_B.md`). Never build B's part; deliver the contracts B
+needs (`TEAM_SPLIT.md` §3) on time, keep the reserved migration numbers (§4), and merge into `main` only via pull request.
+
 ## Repo map
 ```
 CLAUDE.md                 ← you are here
 AGENTS.md                 ← pointer for non-Claude AI tools
 docs/
-  ROADMAP.md              ← phases + task checklist + CURRENT PHASE (check this first)
+  ROADMAP.md              ← phases + task checklist + CURRENT PHASE (check this first); [B] = Developer B's task
+  TEAM_SPLIT.md           ← who owns what, contracts between A and B, migration numbers, branch rules
+  ROADMAP_DEV_B.md        ← Developer B's milestones (read to know what B needs from A and when)
+  01-PRD … 10-DEPLOYMENT  ← requirements, architecture, data model, API spec, UI spec, tasks (07), tests, security, deployment
   DOMAIN_RULES.md         ← business rules, state machines, error codes, open questions (authoritative)
   DECISIONS.md            ← ADRs: every tech/architecture choice with the why and the alternatives
   CONVENTIONS.md          ← package layout, code patterns, migrations, tests, Definition of Done
@@ -48,8 +57,8 @@ docker compose down -v        # wipe the local DB (only way to re-run an edited,
 ## Stack (versions matter)
 Java 21 · **Spring Boot 4.1** (Spring Framework 7, Spring Security 7, Hibernate 7, **Jackson 3**) ·
 Spring Data JPA · Bean Validation · Flyway · PostgreSQL 17 · Gradle 9 · JUnit 5 + Testcontainers ·
-planned: springdoc-openapi, JWT via spring-boot-starter-oauth2-resource-server (Nimbus). Client:
-Kotlin Android (Jetpack Compose), not started yet.
+springdoc-openapi (dev only) · planned: JWT via spring-boot-starter-oauth2-resource-server (Nimbus). Client (Developer B):
+desktop app, Kotlin + Compose Multiplatform, Windows + Linux; Android/mobile is future scope.
 
 **Boot 4 pitfalls. Don't produce Boot 2/3-era code:**
 - `jakarta.*` only, never `javax.*`.
@@ -98,9 +107,10 @@ The default mode is **mentor + pair-programmer**:
 - Schema changes **only** via new Flyway migrations with constraints, CHECKs and FK indexes. `ddl-auto=validate`. Merged migrations are immutable.
 - Tests: domain unit tests + Testcontainers integration tests (never H2) + a concurrency test for stock/money paths. Every rule needs a test that proves rejection.
 - Secrets come from env vars. Never log passwords, tokens or full account numbers.
-- Git: branch `feature/<area>-<short>` from `main`, Conventional Commits, PR to `main`.
+- Git: Developer A works on `feature/dev-a/...`, Developer B on `feature/dev-b/...`; `main` is the shared production branch where both are merged by pull request after testing. Conventional Commits.
 
 ## Current state (update as the project moves)
-- Done: Gradle/Spring Boot 4.1.1 skeleton, Actuator/JPA/Flyway/Validation/WebMVC deps, local Postgres compose, Flyway V1/V2 (a smoke test only), task 0.1 base package renamed to `com.nexora` (main class `NexoraApplication`).
-- In progress: `V3__initial_foundation_tables.sql` (untracked). It has users, parties (multi-role via `party_roles`), and phone numbers. It **needs revision** before merge: see ROADMAP task 1.9.
+- Done: Phase 0 tasks 0.1–0.9 (package rename, yml profiles, `.env.example`, `AuditableEntity` + auditing, `ErrorCode`/`BusinessException`/`GlobalExceptionHandler`, `Clock`/`PageResponse`/`Money`/`Weight`, business number generator V4, Testcontainers test base, springdoc dev-only).
+- Next: 0.10 CI, then Phase 1. `V3__initial_foundation_tables.sql` still **needs revision** (ROADMAP task 1.9; the party role CHECK must include `LENDER`).
+- First deliverable Developer B is waiting for: `GET /api/v1/health` (`TEAM_SPLIT.md` §3.1).
 - Branch: `feature/dev-a/backend-foundation`. Current phase: see the top of `docs/ROADMAP.md`.

@@ -3,9 +3,19 @@
 > Covers SDLC **Step 9 Implementation → Step 10 Integration → Step 11 Testing/Security/Reliability → Step 12 Deployment/Monitoring/Docs**.
 > Steps 1–8 (business → API design) are complete in `smart-ledger-docs/`.
 >
-> **Current phase: Phase 0 — Foundation** (next task: 0.2 `application.yml` + profiles) · Last updated: 2026-10-02
+> **Current phase: Phase 0 — Foundation** (Developer A next task: 0.10 CI · Developer B: `ROADMAP_DEV_B.md` M0) · Last updated: 2026-10-08
 >
-> How to use: work top to bottom and tick `[x]` as you finish tasks. Run `/next-task` to get the next task explained. Run `/task-done` to verify and tick it.
+> How to use: work top to bottom and tick `[x]` as you finish tasks.
+
+## Team split (two developers — details in `TEAM_SPLIT.md`)
+| Developer | Owns | Roadmap to follow |
+|---|---|---|
+| **A** (backend core) | infrastructure, `shared/*`, security, parties, procurement, inventory, production, finance (accounts, payments, allocations, transfers, loans, chits), reports/dashboard, notifications, documents, hardening, deployment | this file (Phases 0–8, tasks without a **[B]** tag) + `07-TASKS.md` |
+| **B** (desktop client + 3 backend slices) | the desktop client (Track B, every screen), customer orders, outsourcing and workforce backend, expenses backend | `ROADMAP_DEV_B.md` |
+
+Tasks tagged **[B]** below belong to Developer B. Client: desktop app (Windows + Linux) built with Kotlin + Compose Multiplatform,
+desktop target only for now, shared code in `commonMain`; Android/mobile is future scope (ADR-035, ADR-036).
+Integration order and the contracts between A and B: `TEAM_SPLIT.md` §3 and §5.
 
 ## Guiding strategy
 
@@ -23,7 +33,7 @@ P0 Foundation ─▶ P1 Identity+Parties ─▶ P2 Procurement+Inventory ─▶ 
 P4 Production+Outsourcing+Workforce ─▶ P5 Finance complete ─▶ P6 Dashboard/Reports/Notifications
      ─▶ P7 Hardening (Step 11) ─▶ P8 Deploy + Go-live (Step 12)
 
-Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–P8
+Track B [Developer B] (desktop client, Kotlin + Compose Multiplatform desktop target, Windows + Linux): runs in parallel from the start ── see ROADMAP_DEV_B.md
 ```
 
 ---
@@ -38,9 +48,9 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 - [x] 0.4 `shared/`: `AuditableEntity` (UUID id, createdAt, updatedAt, createdBy, version) + JPA auditing + `AuditorAware`
 - [x] 0.5 `shared/`: `ErrorCode` enum, `BusinessException` hierarchy, `GlobalExceptionHandler` (ProblemDetail + `code`) — see CONVENTIONS §7
 - [x] 0.6 `shared/`: `PageResponse<T>`, `Clock` bean (Asia/Kolkata), money/weight helpers (scale + HALF_UP)
-- [ ] 0.7 `shared/numbering`: `business_number_sequences` migration + `BusinessNumberGenerator.next("PUR")` → `PUR-2026-0001` (row lock, per-year reset) + concurrency test
-- [ ] 0.8 springdoc-openapi, Swagger UI in dev only
-- [ ] 0.9 Test infrastructure: Testcontainers Postgres, `AbstractIntegrationTest`, and the context-load test running against the container
+- [x] 0.7 `shared/numbering`: `business_number_sequences` migration + `BusinessNumberGenerator.next("PUR")` → `PUR-2026-0001` (row lock, per-year reset) + concurrency test
+- [x] 0.8 springdoc-openapi, Swagger UI in dev only
+- [x] 0.9 Test infrastructure: Testcontainers Postgres, `AbstractIntegrationTest`, and the context-load test running against the container
 - [ ] 0.10 CI: GitHub Actions workflow `./gradlew build` on every PR (Testcontainers works on GitHub runners)
 - [ ] 0.11 Hygiene: `.editorconfig`, plus an optional formatter (Spotless + google-java-format) so style is never a review topic
 
@@ -105,8 +115,8 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 **Before starting:** get answers to Q1, Q2, Q5, Q7 in `DOMAIN_RULES.md §8`.
 
 - [ ] 3.1 Migration: `customer_orders`, `order_items`, `financial_accounts`, `financial_transactions`, `payments`, `customer_payment_allocations`, `supplier_payment_allocations`, `idempotency_keys`
-- [ ] 3.2 Orders: `POST /orders` (with items), `GET /orders`, `GET /orders/{id}`, `PATCH /orders/{id}` (→ `ORDER_LOCKED` when locked), `POST /orders/{id}/confirm|cancel|deliver`
-- [ ] 3.3 Delivery creates DELIVERY / DIRECT_SALE movements from FINISHED_STOCK / RAW_STOCK (via InventoryService)
+- [ ] 3.2 **[B]** Orders: `POST /orders` (with items), `GET /orders`, `GET /orders/{id}`, `PATCH /orders/{id}` (→ `ORDER_LOCKED` when locked), `POST /orders/{id}/confirm|cancel|deliver`
+- [ ] 3.3 **[B]** Delivery creates DELIVERY / DIRECT_SALE movements from FINISHED_STOCK / RAW_STOCK (via InventoryService)
 - [ ] 3.4 Finance accounts: `POST/GET /finance/accounts`, opening balance as an `OPENING_BALANCE` transaction. `GET /finance/accounts/{id}/transactions`
 - [ ] 3.5 `FinanceService.recordTransaction(...)` — **the only way money moves** (like InventoryService)
 - [ ] 3.6 `POST /payments` (direction IN from a customer): oldest-first auto-allocation or validated explicit allocations. Excess → advance. One transaction
@@ -122,11 +132,11 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 ---
 
 ## Phase 4 — Production, Outsourcing, Workforce
-- [ ] 4.1 Migration: `production_batches` (+ `discrepancy_weight_kg`), `production_order_items`, `outsourcing_jobs`, `outsourcing_order_items`, `work_records`, `manufacturer_payment_allocations`, **`worker_payment_allocations`** (missing in the schema doc)
+- [ ] 4.1 Migration: `production_batches` (+ `discrepancy_weight_kg`), `production_order_items`, `outsourcing_jobs`, `outsourcing_order_items`, `work_records`, `manufacturer_payment_allocations`, **`worker_payment_allocations`** (missing in the schema doc) — production tables **A**; `outsourcing_*` and `work_records` **[B]** (migrations V12, V13)
 - [ ] 4.2 Production: `POST /production-batches`, `/{id}/start` (CONSUMPTION, locks order items), `/{id}/complete` (reconciliation, PRODUCTION_OUTPUT + WASTAGE), `/{id}/cancel`
 - [ ] 4.3 Starting production marks linked orders `IN_PROGRESS` + locked (orders module method, not direct table access)
-- [ ] 4.4 Outsourcing: create, `/{id}/issue` (OUTSOURCE_ISSUE), `/{id}/receive` (OUTSOURCE_RECEIPT + loss), `GET /inventory/external-wip` per manufacturer/job
-- [ ] 4.5 Work records: `POST/GET /work-records` (ROLLING→hours, WARPING→kg, rate snapshot). `GET /workers/{id}/payable`
+- [ ] 4.4 **[B]** Outsourcing: create, `/{id}/issue` (OUTSOURCE_ISSUE), `/{id}/receive` (OUTSOURCE_RECEIPT + loss), `GET /inventory/external-wip` per manufacturer/job
+- [ ] 4.5 **[B]** Work records: `POST/GET /work-records` (ROLLING→hours, WARPING→kg, rate snapshot). `GET /workers/{id}/payable` (payable endpoint: A, using B's obligations)
 - [ ] 4.6 Manufacturer and worker payments reuse the Phase 3 payment + allocation engine
 - [ ] 4.7 Tests: 100 in / 94 out / 4 waste / 2 discrepancy ✔. 100/94/10 ✘ `PRODUCTION_NOT_RECONCILED`. Vuda into production ✘
 
@@ -134,7 +144,7 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 
 ## Phase 5 — Finance completion
 **Before starting:** Q4, Q6.
-- [ ] 5.1 Expenses: `POST/GET /expenses` (category, business/personal, monthly/one-time — **columns missing in the schema doc, add them**) + reversal
+- [ ] 5.1 **[B]** Expenses: `POST/GET /expenses` (category, business/personal, monthly/one-time — **columns missing in the schema doc, add them**) + reversal
 - [ ] 5.2 Transfers: `POST /finance/transfers` (lock both accounts in id order, OUT+IN, not revenue)
 - [ ] 5.3 Loans: create (LOAN_RECEIVED), principal repayment, interest payment. Outstanding derived
 - [ ] 5.4 Chits: create, contribution / payout (cash-only rule)
@@ -148,7 +158,7 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 - [ ] 6.1 `reporting` module: `GET /dashboard/summary` — one call covering cash, banks, receivables, payables, raw/finished stock, external WIP, pending orders/production/jobs, upcoming supplier dues, recent transactions. SQL projections only
 - [ ] 6.2 Reports: customer outstanding, supplier payables (aging), purchases, sales/orders, expenses, inventory movements, outsourcing, cash/bank. All paginated and date-filtered
 - [ ] 6.3 Verify query plans (`EXPLAIN ANALYZE`) and add indexes where needed
-- [ ] 6.4 Notifications: `notification_configurations`, a `@Scheduled` job for supplier dues (day-8 / day-10 / overdue), `notifications` table with status. `NotificationProvider` interface with a log/no-op implementation for now
+- [ ] 6.4 Notifications: `notification_configurations`, a `@Scheduled` job for supplier dues (default 3 days before due, on the due date, then daily while overdue; configurable), `notifications` table with status. `NotificationProvider` interface with a log/no-op implementation for now
 - [ ] 6.5 Documents: upload a bill/statement (local disk or S3-compatible behind a `FileStorage` interface), with size/type limits and stored metadata only in the DB
 
 ---
@@ -177,28 +187,29 @@ Track B (Android, Kotlin): starts after P3 ── F1…F6 in parallel with P4–
 
 ---
 
-## Track B — Android client (Kotlin), starts after Phase 3
-- [ ] F1 Project setup: Compose, Hilt, Retrofit/OkHttp, kotlinx.serialization, module structure, environment config
-- [ ] F2 Auth: login screen, encrypted token storage, 401 → refresh → retry `Authenticator`, logout
-- [ ] F3 Error handling: map `code` → user-friendly messages (Tamil/English?), offline/timeout states, idempotency key per submit
+## Track B — Desktop client **[B]** (Kotlin + Compose Multiplatform, desktop target only, Windows + Linux)
+Owner: Developer B. Step-by-step order: `docs/ROADMAP_DEV_B.md`; screens: `docs/06-UI-SPEC.md`; task details: `docs/07-TASKS.md` M9. Mobile (Android) is future scope (ADR-035).
+- [ ] F1 Project setup: `nexora-desktop/` Gradle build, Compose Desktop, Koin, Ktor client, kotlinx.serialization, server URL setting, MSI/DEB packaging
+- [ ] F2 Auth: login screen, refresh token in the OS credential store, 401 → refresh → retry, logout
+- [ ] F3 Error handling: map `code` → user-friendly messages, offline/timeout states, idempotency key per submit
 - [ ] F4 Screens for the MVP slice: parties, purchase + receive, inventory, order, payment, outstanding
 - [ ] F5 Dashboard screen (the owner's main screen)
-- [ ] F6 Production, outsourcing, work records, expenses, transfers, reports
-Principles: minimal taps for daily entries (NFR 20.5), big readable numbers, never compute business values on the device.
+- [ ] F6 Production, outsourcing, work records, expenses, transfers, loans, chits, reports
+Principles: keyboard-first fast daily entries (NFR 20.5), big readable numbers, never compute business values in the client.
 
 ---
 
 ## Known design gaps (resolve when the phase arrives, then record in DECISIONS/DOMAIN_RULES)
-| Gap | Phase |
-|---|---|
-| Party schema in V3 diverges from the design doc (multi-role, structured address). Keep V3's approach, but add code/status/credit days | 1 |
-| Supplier default credit days and worker type/rate have no column in the schema doc | 1 |
-| `worker_payment_allocations` missing from the schema doc | 4 |
-| Expense business/personal + monthly/one-time flags missing | 5 |
-| `financial_transactions` has many nullable FKs — add a CHECK that exactly one reference (or none for manual/opening) is set | 3 |
-| Opening receivables/payables representation for go-live | 8 (design in 3) |
-| Delivery/sale billing (invoice numbers, GST later) is out of MVP, but numbering is ready | post-MVP |
-| Open business questions Q1–Q8 | see DOMAIN_RULES §8 |
+| Gap | Phase | Resolved in |
+|---|---|---|
+| Party schema in V3 diverges from the design doc (multi-role, structured address). Keep V3's approach, but add code/status/credit days | 1 | `04-DATA-MODEL.md` §3.2-3.4 (V3 revised; `LENDER` role added in place) |
+| Supplier default credit days and worker type/rate have no column in the schema doc | 1 | `04-DATA-MODEL.md` §3.2 (`default_credit_days`, `default_rolling_rate_per_hour`, `default_warping_rate_per_kg`) |
+| `worker_payment_allocations` missing from the schema doc | 4 | `04-DATA-MODEL.md` §11.2 |
+| Expense business/personal + monthly/one-time flags missing | 5 | `04-DATA-MODEL.md` §7.3 |
+| `financial_transactions` has many nullable FKs — add a CHECK that exactly one reference (or none for manual/opening) is set | 3 | `04-DATA-MODEL.md` §7.7 (`ck_financial_transactions_single_reference`, `_type_reference`) |
+| Opening receivables/payables representation for go-live | 8 (design in 3) | `04-DATA-MODEL.md` §8.1 (`opening_obligations`), `10-DEPLOYMENT.md` §12 |
+| Delivery/sale billing (invoice numbers, GST later) is out of MVP, but numbering is ready | post-MVP | still post-MVP |
+| Open business questions Q1–Q8 | see DOMAIN_RULES §8 | MVP assumptions in DOMAIN_RULES §8 (confirm with the owner before go-live) |
 
 ## Post-MVP backlog (P2/P3, don't start before v1.0 is live)
 Monthly/yearly P&L · product/customer profitability · FIFO/lot costing · WhatsApp reminders & bill sharing · Voice AI (confirmation-based, read-only first) · AI advisory · forecasting · multi-user staff roles.
