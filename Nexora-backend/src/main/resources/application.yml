@@ -30,6 +30,14 @@ server:
   # Use SERVER_PORT when supplied; otherwise expose the API on port 8080.
   port: ${SERVER_PORT:8080}
 
+springdoc:
+  # Safe default: API docs and Swagger UI are OFF everywhere.
+  # Only application-dev.yml switches them on, so prod never exposes the endpoint map.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 management:
   endpoints:
     web:

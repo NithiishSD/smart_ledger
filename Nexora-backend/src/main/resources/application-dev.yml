@@ -11,6 +11,13 @@ logging:
     # Keep Spring MVC logs at a normal informational level.
     org.springframework.web: INFO
 
+springdoc:
+  # Dev only: serves /v3/api-docs (JSON) and /swagger-ui.html (interactive page).
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
 management:
   endpoint:
     health:
