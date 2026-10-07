@@ -1,0 +1,27 @@
+# Keeps developer-only files (personal notes and local tool configuration) out of main.
+# Those files may live on feature/dev-* branches; main only receives clean, squash-merged changes
+# prepared by scripts/prepare-main-merge.sh.
+name: Main branch guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  developer-only-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if developer-only files are present
+        run: |
+          found=$(git ls-files | grep -E -f scripts/developer-only-files.txt || true)
+          if [ -n "$found" ]; then
+            echo "These developer-only files must not reach main:"
+            echo "$found"
+            echo "Open the pull request with scripts/prepare-main-merge.sh instead."
+            exit 1
+          fi
+          echo "No developer-only files."

@@ -100,7 +100,13 @@ Changing a contract after it is on `main` needs both developers to agree in the 
 6. **Contract first.** Before building anything that depends on the other half, confirm in writing (pull request or chat):
    path, method, request DTO, response DTO, errors, permission, pagination/filters, state transitions. `05-API-SPEC.md` is the default
    answer; only deviations need discussion.
-7. **No mocks in production code.** The client is tested against Ktor `MockEngine` with payloads copied from `05-API-SPEC.md`, but
+7. **`main` never receives developer-only files.** Personal notes and local tool configuration (the paths listed in
+   `scripts/developer-only-files.txt`) may live on `feature/dev-*`
+   branches only. To merge into `main`, run `scripts/prepare-main-merge.sh` from your feature branch: it opens a pull request from a
+   clean `release/...` copy of your branch. Test manually, then **Squash and merge** (the only merge type allowed on `main`, so no
+   history with those files reaches it). The `Main branch guard` check fails any pull request into `main` that still contains them.
+   After a merge, bring `main` back into your branch with `git merge origin/main`; your developer-only files stay.
+8. **No mocks in production code.** The client is tested against Ktor `MockEngine` with payloads copied from `05-API-SPEC.md`, but
    production code always calls the real API.
 
 ## 5. Order of work and integration checkpoints

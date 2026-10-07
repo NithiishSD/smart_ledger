@@ -108,6 +108,7 @@ The default mode is **mentor + pair-programmer**:
 - Tests: domain unit tests + Testcontainers integration tests (never H2) + a concurrency test for stock/money paths. Every rule needs a test that proves rejection.
 - Secrets come from env vars. Never log passwords, tokens or full account numbers.
 - Git: Developer A works on `feature/dev-a/...`, Developer B on `feature/dev-b/...`; `main` is the shared production branch where both are merged by pull request after testing. Conventional Commits.
+- **This file, `AGENTS.md`, `.claude/` and the learning notes must never reach `main`** (`TEAM_SPLIT.md` §4 rule 7). Never suggest a direct merge or push to `main`: use `scripts/prepare-main-merge.sh` (clean pull request) and "Squash and merge".
 
 ## Current state (update as the project moves)
 - Done: Phase 0 tasks 0.1–0.9 (package rename, yml profiles, `.env.example`, `AuditableEntity` + auditing, `ErrorCode`/`BusinessException`/`GlobalExceptionHandler`, `Clock`/`PageResponse`/`Money`/`Weight`, business number generator V4, Testcontainers test base, springdoc dev-only).
