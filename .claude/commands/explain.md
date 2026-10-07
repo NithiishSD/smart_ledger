@@ -9,7 +9,7 @@ Structure:
 2. **The problem it solves in SmartSilk**: a concrete scenario using our domain (silk kg, payments, orders…).
 3. **Why we chose it**: cite the ADR in `docs/DECISIONS.md` if one exists. If no ADR exists and this is a real decision, propose one.
 4. **Alternatives & trade-offs**: what we rejected and when that alternative *would* be the right choice.
-5. **How it looks in our code**: where it lives (package/file) plus a short snippet in Spring Boot 4 / Java 21 style.
+5. **How it looks in our code**: where it lives (package/file) plus a short snippet in Spring Boot 4 / Java 21 style, or Kotlin / Compose Multiplatform style for client topics.
 6. **Common mistakes**.
 7. **Interview answer**: how I'd explain it in 3–4 sentences.
 
