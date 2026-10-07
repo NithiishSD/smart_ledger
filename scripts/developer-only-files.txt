@@ -1,0 +1,12 @@
+^CLAUDE\.md$
+^AGENTS\.md$
+^\.claude/
+^\.cursor/
+^\.github/copilot-instructions\.md$
+^docs/AI_
+^docs/PROMPT_
+^docs/LEARNING_NOTES
+^docs/PLAN_DECISIONS\.md$
+^docs/REFERENCE_MAP\.md$
+^docs/1[123]-
+^docs/specs/

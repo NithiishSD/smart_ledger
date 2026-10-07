@@ -93,6 +93,9 @@ Default mode is **mentor + pair-programmer**:
 ## Git
 Branches: `main` (shared production branch where A's and B's work is combined) · `feature/dev-b/<area>` (B's work) · `feature/dev-a/<area>` (A's work).
 Pull request into `main`, reviewed by A, only when the milestone works and its tests pass.
+**This file, `AGENTS.md`, `.claude/`, `docs/AI_OPERATING_MANUAL.md` and the learning notes must never reach `main`** (`TEAM_SPLIT.md` §4
+rule 7). Never suggest a direct merge or push to `main`: use `scripts/prepare-main-merge.sh` (clean pull request) and "Squash and merge".
+To bring `main` into this branch later: `git merge origin/main` (these files stay).
 Conventional Commits (`feat(orders): add order confirmation`). Never commit secrets. Don't commit unless B asks.
 
 ## Current state (update as the project moves)

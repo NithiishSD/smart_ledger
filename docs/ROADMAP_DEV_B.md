@@ -43,7 +43,7 @@ architecture in `commonMain`, and shows "Backend connected".
 ## M1 — Authentication (client)
 **Needs from A:** T1.01–T1.07 (login, refresh, logout, `/auth/me`, `/actuator/info` api-version).
 **Learn (do not build):** read A's security code — JWT access token, opaque refresh token with rotation, BCrypt, filter chain,
-permissions, 401 vs 403. Explain each in `docs/LEARNING_NOTES_DEV_B.md`.
+permissions, 401 vs 403. Be able to explain each one in your own words.
 
 - [ ] **B1.1 Server setup + version check** — first-run screen; block login when the API major version differs. (S-AUTH-01, T9.04)
 - [ ] **B1.2 Login screen** — `LoginScreen → AuthViewModel → AuthRepository → AuthApi`; validation, loading, error (401 INVALID_CREDENTIALS,
@@ -146,4 +146,4 @@ values like stock, balances and outstanding only from the backend; tests green (
 validation; thin controller with `@PreAuthorize`; `@Transactional` application service; cross-module calls only through contracts;
 the tests named in `07`/`08` (including rejection tests) green with `./gradlew test`; API matches `05-API-SPEC.md`.
 **Integration:** request/response match the agreed contract; works end to end against PostgreSQL; no breaking change without agreement.
-**Git:** `feature/dev-b/<area>` → pull request → reviewed by Developer A → `main` (the shared production branch). Conventional Commits. No secrets.
+**Git:** commit on `feature/dev-b/<area>` → `scripts/prepare-main-merge.sh` (pull request without developer-only files) → reviewed by Developer A, tested manually → Squash and merge into `main`. Conventional Commits. No secrets.
